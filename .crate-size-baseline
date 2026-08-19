@@ -1,0 +1,191 @@
+# per-crate source line counts — the RATCHET baseline. See scripts/check-crate-size.sh.
+# Shrinking updates automatically; GROWING requires --update-baseline and review.
+#
+# The CQRS command seam raised four of these. Naming the surface that asked for a
+# change costs a module in the engine, a step module that drives it over the real
+# wire, one helper in the harness and one metadata stamp in the shim:
+#   anvil-engine       +423  (command_seam.rs + the four handler call sites)
+#   anvil-engine-steps +559  (anvil-engine-steps/src/command_seam.rs)
+#   anvil-test-support +166  (the `surfaced` helper the whole harness now routes through)
+#   anvil-mcp           +44  (the one stamp inside call_engine)
+# anvil-engine's remaining 2% tolerance was 394 lines and anvil-engine-steps' was
+# 369, so a seam with real step definitions cannot land under them. These are the
+# measured sizes, re-recorded deliberately rather than absorbed by trimming the
+# behavioral coverage or the module docs.
+#
+# anvil-core WAS deliberately left below its measured size, because
+# `--update-baseline` rewrites every row and doing so would have banked +526
+# lines of anvil-core growth that no reviewed change made. That deferral is now
+# DISCHARGED, and not by a raise: the crate was split (see the block below) and
+# its row is the post-split measured size, lowered by the script's own DOWN path.
+#
+# ── the autonomy measurement substrate (T-RD-PBK-AUTONOMY) ──────────────────
+# Grading a finished run rather than counting it costs a domain module, its step
+# module, and the fold that turns recorded transitions into a reviewer verdict:
+#   anvil-core         +611  (domain/autonomy_evidence.rs + the run_detail fold)
+#   anvil-core-steps  +1031  (autonomy_evidence.rs 711 + transition_verdict_fold.rs 267)
+#   anvil-engine       +279  (the measurement-cleanliness surface)
+#   anvil-engine-steps  +208
+#   anvil-test-support  +202
+# Verified against the script's OWN rule (src/**.rs + tests/**.rs, features
+# excluded) rather than a raw diff — a raw diff counts the 432 lines of .feature
+# and overstates anvil-core by exactly that much. Four of the five rows below
+# match their track growth to the line; anvil-core is banked at 48814+611=49425,
+# NOT the measured 49951, so the +526 above stays unbanked and still owned by
+# whoever wrote it.
+#
+# ── the fifty-thousand-line split (anvil-core -> anvil-core + anvil-core-hearth) ──
+# The warning that stood here — "anvil-core's MEASURED size is 49951 against a
+# SOFT CAP of 50000 — 49 lines of headroom. The next addition to anvil-core
+# crosses it. Split the crate; do not raise this row again without doing so." —
+# is DISCHARGED. b719880e crossed the cap (+67 -> 50018) and 991c7448 reached
+# 51433. The crate was then cut at the adapter seam, measured with the script's
+# own rule:
+#   anvil-core        51433 -> 40431   (domain + ports + tests; features excluded)
+#   anvil-core-hearth       -> 11014   (src/hearth/ + the three src/bin/ targets)
+# The seam is real rather than a facade: anvil-core carries NO dependency on
+# anvil-core-hearth, so the compiler now refuses a domain handler that reaches
+# the filesystem. No crate in this workspace is over the soft cap.
+#
+# anvil-core-steps is raised ONCE, by hand, from 43185 to its measured 44756. It
+# is NOT split here: it fails only the growth ratchet, sits 5244 lines under the
+# soft cap, and emits no soft-cap WARN — in this guard's own vocabulary the soft
+# cap is what "split the crate" means. The +1571 is attributable to the line:
+#   T1 P1        (b719880e)   +232
+#   T11 P0+P1    (283a6d9e)   +523
+#   T1 P2        (991c7448)   +815
+#   this split                  +1   (one import line that had to divide)
+# THE STANDING TRIGGER: the day anvil-core-steps' MEASURED size crosses 50000,
+# the prohibition above applies to it verbatim, and the sibling split track runs
+# BEFORE any further raise of this row.
+#
+# SECOND HAND RAISE, 2026-08-15: 44756 -> 45909, for T1 phase 3 (+1153: the
+# join_episode step module 986, activity_log_sink +170, minus trims). The module
+# was compacted twice before this raise — 1084 -> 986, by merging two redundant
+# step families — and sits at ~27 lines per step against delivery_log_sink.rs's
+# ~40; the remaining 258 could only come out by deleting diagnostics or
+# scenarios, which is paying in coverage for a number. Taken under the standing
+# trigger above, which permits a hand raise while MEASURED size is under 50000:
+# 45909 leaves 4091. anvil-core is NOT touched by this edit (41099 against its
+# own 40431 baseline, +140 of headroom left), and --update-baseline was NOT run,
+# because it rewrites every row and would bank growth no reviewed change made.
+# Two raises is a trend, not an accident: the next one runs the split first.
+#
+# (Hard cap 120,000; the hazard that set these numbers was accumulate-test-support
+# going 36k -> 130k and OOM-ing the machine four times in one day.)
+#
+# ── T11 P2+P3, change-record commit metadata and the journal (2026-08-16) ───
+# anvil-core        40431 -> 41243  (+142: domain/change_record/message.rs 141,
+#                   the PURE fold — trailer allowlist, render_commit_message,
+#                   parse_trailers — plus one import line)
+# anvil-core-hearth 11826 -> 11826  (+812: change_record_commit.rs 309,
+#                   change_record_journal.rs 522, git_plumbing +9 for two new
+#                   closed-enum variants, lib.rs +2, MINUS 77 reclaimed from
+#                   change_record_baseline.rs, whose private copy of the
+#                   hash/stage/write-tree/commit-tree path the hoist DELETED
+#                   rather than left behind)
+# Both rows raised by hand, these two rows only, attributed above.
+# --update-baseline was NOT run.
+#
+# anvil-core entered this change with 137 lines of headroom and breached by 4.
+# The 4 were NOT bought back by trimming doc comments: those comments carry the
+# constraints the code cannot show, and paying in them for a number is how a
+# guard teaches people to strip the thing that makes the code readable.
+# anvil-core-hearth sits 38,174 lines under the 50,000 soft cap, so this is the
+# growth ratchet doing its job, not a split trigger.
+anvil-core 41243
+#
+# ── THIRD raise of anvil-core-steps (2026-08-16) ────────────────────────────
+# 45909 -> 46909 (+1000): the step modules for T11 P2/P3 (change-record commit
+# metadata + journal/recovery) and for the router-degradation cause taxonomy,
+# which were implemented in PARALLEL in separate worktrees and each verified
+# only against its own baseline. Neither breached alone; the MERGE did. That is
+# the honest hazard of parallel streams and is recorded rather than smoothed.
+#
+# Still under the 50000 trigger, so a hand raise remains permitted — but this is
+# the THIRD, and the note above already said two is a trend. The sibling split
+# track now EXISTS:
+#   tracks/20260816T0916_split_anvil_core_steps_along_its_consumer_seam
+# created 2026-08-16 through the production front door, on a real routed turn.
+# It should run before a fourth raise, not after.
+anvil-core-steps 46909
+#
+# ── T1's /ws reachability amendment, the join coverage arm (2026-08-16) ──────
+# anvil-engine 20785 -> 20927 (+142), MEASURED before and after, and it breached:
+# the limit was 20818, so the arm could not land under it. What the lines bought
+# is the join coverage reaching a person instead of only a gRPC client — a
+# `join_coverage` dispatch arm on the /ws bridge (55: params -> the request the
+# RPC already takes, and nothing else) and its serializer (87: the per-hearth
+# report, its three nested bucket groups, and no pooled total). The arm calls
+# `compute_join_coverage`, so no resolution and no fold is re-implemented here;
+# a scenario compares the two surfaces' payloads directly.
+#
+# This is the anvil-engine row's raise for this change, by hand, this row only.
+# --update-baseline was NOT run: it rewrites all seven rows and banks growth no
+# reviewed change made. It also DISCHARGES the "⚠ WATCH anvil-engine" note below,
+# which was written when the row had 64 lines of tolerance left and correctly
+# refused to pre-raise on a later change's behalf. 20927 sits 29,073 lines under
+# the 50,000 soft cap, so the split-before-raise trigger recorded for
+# anvil-core-steps does not reach this row.
+anvil-engine 21569
+#
+# ── T1 phase 4, the JoinCoverage wire (2026-08-15) ──────────────────────────
+# anvil-engine-steps 19246 -> 20240 (+994): join_coverage_rpc.rs 967 for 18
+# scenarios / 33 steps (~29 lines per step, the same density as the phase-3
+# module), plus ~27 lines across the two wire guards this phase deliberately
+# tripped and re-pinned. Raised by hand, this row only, attributed here.
+#
+# This is anvil-engine-steps' FIRST raise, and it sits 29,760 lines under the
+# 50,000 soft cap, so the split-before-raise trigger recorded above for
+# anvil-core-steps does not apply to it. --update-baseline was NOT run.
+#
+# ⚠ WATCH anvil-engine: measured 20754 against baseline 20410, leaving 64 lines
+# of tolerance. The next engine change of any size breaches it. That row is NOT
+# raised here — it has not breached, and pre-raising a row on someone else's
+# behalf is the silent ratchet this guard exists to prevent.
+#
+# ── anvil-hooks Foundry credential path (2026-08-16) ────────────────────────
+# anvil-engine-steps 20240 -> 20810 (+570): anvil_hooks_bearer.rs 328 lines for
+# 7 scenarios / 12 steps (~27 lines per step — the same density as the
+# join_coverage_rpc.rs raise recorded above), plus the shared-arg and
+# table-driven registration refactor already applied to hold it there. The
+# module drives the REAL anvil-hooks binary as a subprocess against a REAL
+# engine, so it carries process spawn/capture/read-back that a pure in-process
+# step module does not. Raised by hand, this row only, attributed here.
+# --update-baseline was NOT run (it would have silently raised every row).
+#
+# anvil-mcp ratcheted DOWN 5323 -> 5318 in the same change: `attach_bearer` was
+# deleted there and hoisted into anvil_engine::kit_bearer so the MCP shim and
+# the hooks CLI present a byte-identical Authorization header. The ratchet
+# records the shrink permanently, which is the intended asymmetry.
+#
+# ⚠ WATCH anvil-engine: now 21262 against baseline 20927, leaving 83 lines of
+# tolerance (kit_bearer.rs, 210 lines, landed in this change and consumed most
+# of what was left). NOT raised here — it has not breached. The next engine
+# change of any size will breach it and must raise it deliberately.
+#
+# RAISED anvil-engine 20927 -> 21569 for the panel-pull route, which is the
+# breach the WATCH above predicted: "the next engine change of any size will
+# breach it and must raise it deliberately." This is that change, and the
+# arithmetic is stated so the raise can be argued with rather than trusted.
+#
+#   304 lines are THIS change   panel.rs 206 (the projection, pure and testable
+#                               without a hearth) + 95 in ws_bridge.rs (the
+#                               route and its three folded reads) + 3 wiring.
+#   338 lines were ALREADY over the recorded baseline before it — the crate
+#                               stood at 21265 on a clean origin/main, inside
+#                               the 2% tolerance and invisible because the
+#                               tolerance absorbed it.
+#
+# So this raise books 642 lines of which fewer than half are the feature that
+# triggered it. That is worth writing down: a ratchet with a percentage
+# tolerance lets growth accumulate silently until someone trips it, and the
+# person who trips it looks like the cause. NOT SPLIT, deliberately — splitting
+# a crate to land one HTTP route would be a large refactor performed under time
+# pressure by whoever happened to breach the number, which is how a guard turns
+# into a hazard of its own.
+anvil-engine-steps 20810
+anvil-mcp 5318
+anvil-mcp-steps 13275
+anvil-test-support 31451
+anvil-core-hearth 11826

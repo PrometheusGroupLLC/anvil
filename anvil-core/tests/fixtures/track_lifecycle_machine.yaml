@@ -1,0 +1,605 @@
+kind: track
+directory: tracks
+registry: tracks.md
+parent_kind: proposal
+parent_required: true
+description: Concrete implementation of a proposal slice.
+access:
+  org: Foundation
+  min_role: read
+  sensitivity: internal
+  space: null
+owner_kit: ''
+visibility: ''
+route:
+  description: Route here to IMPLEMENT, build, add, wire, fix, or ship a feature, code change, or bug fix — engineering work to do now. NOT a playbook definition (playbook_generation); NOT questions, debugging, status, or discussion.
+  triggers:
+  - new track
+  - start a track
+  - create a track
+  - begin work on a track
+  - implement a feature
+  - start a feature
+  - start a new track
+  - begin work on
+  - implement the feature
+  - add support for
+  - start implementing
+projection_only: false
+required_fields:
+- name: name
+  field_type: string
+  description: Track name
+- name: parent_id
+  field_type: artifact_id
+  description: Parent proposal id
+- name: approver
+  field_type: actor_name
+  description: Human or reviewer authorizing creation
+roles:
+- doer
+- spec
+- plan
+- implement
+- reflect
+- complete
+- review
+- reviewer
+states:
+- name: spec
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: spec-writing.md
+  measurement_by_role:
+    doer:
+      intent: 'Translate the approved proposal into a concrete, testable spec: define what to build and why, with acceptance criteria a reviewer can check.'
+      expected_output: A spec.md stating scope, acceptance criteria as brine-checkable statements, and explicit out-of-scope boundaries.
+      success_criteria: A `spec.md` states scope, at least 3 acceptance criteria written as falsifiable brine-checkable statements (each naming a threshold, an error code, or a zero-case), and an explicit out-of-scope list naming each exclusion's owning future track.
+      evidence_obligation:
+      - artifact_of_consequence
+- name: spec_review
+  role_filters: []
+  registry_section: spec_review
+  projection_targets:
+  - Spec Review
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    reviewer: spec-review.md
+  measurement_by_role:
+    reviewer:
+      intent: Judge whether the spec's acceptance criteria are complete, unambiguous, and faithful to the proposal before plan work begins.
+      expected_output: A spec.review.md verdict (satisfied or findings) citing each acceptance criterion gap or confirming coverage.
+      success_criteria: A `spec.review.md` verdict marks satisfied or full_revision and, when full_revision, cites at least 1 specific acceptance-criterion gap by name; zero acceptance criteria are approved unchecked.
+- name: spec_revision
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: spec-revision.md
+  measurement_by_role:
+    doer:
+      intent: Revise spec.md in response to review findings while preserving approved scope and recording explicit dispositions.
+      expected_output: An updated spec.md plus a timestamped spec.review.md response disposing every finding.
+      success_criteria: An updated `spec.md` plus a `spec.review.md` response that dispositions every finding (addressed or rejected-with-rationale), leaving zero findings undispositioned.
+- name: plan
+  role_filters: []
+  registry_section: plan
+  projection_targets:
+  - Planned
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: plan-writing.md
+  measurement_by_role:
+    doer:
+      intent: Research the codebase and translate the approved spec into a concrete phased implementation plan.
+      expected_output: A plan.md with file-grounded phases, pending tasks, checkpoints, and coverage for every accepted requirement.
+      success_criteria: A `plan.md` opens with an audit section citing at least 5 real file:line locations grounding its codebase claims, phases the work with a test named per phase, and covers every accepted spec acceptance criterion.
+      evidence_obligation:
+      - verifiable_citation
+      - artifact_of_consequence
+- name: plan_review
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    reviewer: plan-review.md
+  measurement_by_role:
+    reviewer:
+      intent: Judge whether plan.md fully covers the spec with feasible, well-ordered, codebase-grounded tasks.
+      expected_output: A plan.review.md verdict with findings for coverage, feasibility, ordering, completeness, and architecture gaps.
+      success_criteria: A `plan.review.md` verdict marks satisfied or full_revision, and any full_revision cites at least 1 concrete coverage, feasibility, ordering, or architecture gap tied to a specific plan phase.
+- name: plan_revision
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: plan-writing.md
+  measurement_by_role:
+    doer:
+      intent: Revise plan.md in response to plan-review findings while preserving spec coverage and task clarity.
+      expected_output: An updated plan.md plus a timestamped plan.review.md response disposing every finding.
+      success_criteria: An updated `plan.md` plus a `plan.review.md` response dispositioning every finding, with zero findings left open and spec coverage preserved.
+- name: implementing
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: implementing.md
+  measurement_by_role:
+    doer:
+      intent: Execute plan tasks through Brine-first test-driven implementation while keeping plan.md current.
+      expected_output: Passing feature coverage and implementation commits for completed tasks, with plan.md task status updated.
+      success_criteria: Every completed plan task passes its brine feature scenario (`brine run .` green) and `plan.md` task-status checkboxes are updated to reflect completed tasks, with zero tasks left silently undone.
+- name: impl_phase_review
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    reviewer: impl-phase-review.md
+  measurement_by_role:
+    reviewer:
+      intent: Review completed implementation phases for plan conformance, initiative regressions, and vertical-slice integrity.
+      expected_output: An impl.phase.review.md entry with calibrated findings for the completed phase and any risks to later phases.
+      success_criteria: An `impl.phase.review.md` entry marks satisfied or full_revision for the reviewed phase and, when full_revision, names at least 1 specific defect or regression risk tied to a plan phase.
+- name: impl_review
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    reviewer: impl-review.md
+  measurement_by_role:
+    reviewer:
+      intent: Perform the final whole-track implementation review against spec, plan, tests, and unresolved findings.
+      expected_output: An impl.review.md verdict covering intent compliance, correctness, test coverage, integration, and AC closure.
+      success_criteria: An `impl.review.md` verdict marks satisfied or full_revision covering intent compliance, correctness, test coverage, and acceptance-criteria closure, with every finding SEVERITY-tagged (P1 or nit) and zero acceptance criteria left unaddressed.
+- name: impl_revision
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: implementing.md
+  measurement_by_role:
+    doer:
+      intent: Address final implementation review findings through Brine-first changes without skipping explicit dispositions.
+      expected_output: Updated implementation and feature coverage plus a timestamped impl.review.md response disposing every finding.
+      success_criteria: Updated implementation with all previously failing brine scenarios now green (`brine run .`), plus a timestamped `impl.review.md` response dispositioning every finding, leaving zero findings open.
+- name: reflecting
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: reflecting.md
+  measurement_by_role:
+    doer:
+      intent: Write the semantic reflection capturing what changed in understanding across intent, reality, exceptions, and projections.
+      expected_output: A reflection.md that addresses every required delta lens and records actionable future assumptions.
+      success_criteria: A `reflection.md` names what changed in understanding (intent-delta vs reality-delta), owns at least 1 thing that went wrong honestly, and extracts a durable rule — not a restatement of the plan or spec in past tense.
+- name: reflection_review
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    complete: complete.md
+    reviewer: reflection-review.md
+  measurement_by_role:
+    complete:
+      intent: Verify the artifact is administratively complete after accepted reflection review and prepare terminal closure.
+      expected_output: A completed transition with required sign-offs verified and projection rebuild obligations identified.
+      success_criteria: A `completed` transition record with the reflection-review satisfied sign-off verified, zero open findings remaining, and any projection rebuild obligation named explicitly (or `none`).
+    reviewer:
+      intent: Review reflection.md for accurate semantic deltas before its claims feed projections.
+      expected_output: A reflection.review.md verdict confirming or challenging intent, reality, exception, and projection deltas.
+      success_criteria: A `reflection.review.md` verdict marks satisfied or full_revision and, when full_revision, names at least 1 specific delta claim (intent, reality, exception, or projection) that the reflection got wrong or omitted.
+- name: reflection_revision
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: reflecting.md
+  measurement_by_role:
+    doer:
+      intent: Revise reflection.md in response to reflection-review findings while keeping every delta lens accurate.
+      expected_output: An updated reflection.md plus a timestamped reflection.review.md response disposing every finding.
+      success_criteria: An updated `reflection.md` plus a timestamped `reflection.review.md` response dispositioning every finding, with zero delta lenses left inaccurate.
+- name: amend
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: amend-writing.md
+  measurement_by_role:
+    doer:
+      intent: Append an amendment to the correct frozen-artifact amendment log without editing the frozen source.
+      expected_output: A numbered append-only amendment entry with context, amendment text, and rationale in the routed amendments file.
+      success_criteria: A numbered append-only entry in the correct `*.amendments.md` file naming the frozen artifact, the amendment text, and a rationale, with the frozen source file itself unedited (zero diff outside the amendments log).
+- name: amend_review
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: true
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    reviewer: amend-review.md
+  measurement_by_role:
+    reviewer:
+      intent: Review an amendment for necessity, accuracy, scope, append-only discipline, downstream effects, and approval needs.
+      expected_output: A review entry in the phase's existing review document with findings or sign-off for the amendment.
+      success_criteria: A review entry appended to the phase's existing review document marks satisfied or full_revision and, when full_revision, names at least 1 necessity, scope, or append-only-discipline gap.
+- name: amend_revision
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role:
+    doer: amend-writing.md
+  measurement_by_role:
+    doer:
+      intent: Revise an amendment in response to review findings using append-only revision notes.
+      expected_output: An updated amendments log plus a timestamped review response disposing every finding.
+      success_criteria: An updated amendments log entry plus a timestamped review response dispositioning every finding, with zero findings left unaddressed and no edits to the frozen source.
+- name: completed
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: false
+  hook: null
+  hooks_by_role: {}
+  measurement_by_role: {}
+- name: abandoned
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: true
+  hook: null
+  hooks_by_role: {}
+  measurement_by_role: {}
+- name: superseded
+  role_filters: []
+  registry_section: ''
+  projection_targets: []
+  is_review_gate: false
+  is_terminal: true
+  hook: null
+  hooks_by_role: {}
+  measurement_by_role: {}
+transitions:
+- from_state: spec
+  to_state: spec_review
+  required_role: spec
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: spec_review
+  to_state: spec_revision
+  required_role: reviewer
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: spec_review
+  to_state: plan
+  required_role: reviewer
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: spec_review
+  to_state: plan
+  required_role: reviewer
+  required_satisfaction:
+  - address_in_next_step
+  requires_approver: false
+  hook: null
+- from_state: spec_revision
+  to_state: spec_review
+  required_role: spec
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: plan
+  to_state: plan_review
+  required_role: plan
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: plan_review
+  to_state: plan_revision
+  required_role: plan
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: plan_review
+  to_state: implementing
+  required_role: implement
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: plan_revision
+  to_state: plan_review
+  required_role: reviewer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: implementing
+  to_state: impl_phase_review
+  required_role: reviewer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: implementing
+  to_state: impl_review
+  required_role: implement
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: impl_phase_review
+  to_state: implementing
+  required_role: implement
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: impl_phase_review
+  to_state: implementing
+  required_role: implement
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: impl_review
+  to_state: impl_revision
+  required_role: implement
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: impl_review
+  to_state: reflecting
+  required_role: reflect
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: impl_revision
+  to_state: impl_review
+  required_role: reviewer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: reflecting
+  to_state: reflection_review
+  required_role: reflect
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: reflection_review
+  to_state: reflection_revision
+  required_role: reflect
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: reflection_review
+  to_state: completed
+  required_role: complete
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: reflection_revision
+  to_state: reflection_review
+  required_role: reviewer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: completed
+  to_state: amend
+  required_role: doer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: amend
+  to_state: amend_review
+  required_role: doer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: amend_review
+  to_state: completed
+  required_role: reviewer
+  required_satisfaction:
+  - satisfied
+  requires_approver: false
+  hook: null
+- from_state: amend_review
+  to_state: amend_revision
+  required_role: doer
+  required_satisfaction:
+  - full_revision
+  requires_approver: false
+  hook: null
+- from_state: amend_revision
+  to_state: amend_review
+  required_role: doer
+  required_satisfaction: null
+  requires_approver: false
+  hook: null
+- from_state: spec
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: spec_review
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: spec_revision
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: plan
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: plan_review
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: plan_revision
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: implementing
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: impl_phase_review
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: impl_review
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: impl_revision
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: reflecting
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: reflection_review
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+- from_state: reflection_revision
+  to_state: abandoned
+  required_role: doer
+  required_satisfaction:
+  - abandoned
+  requires_approver: false
+  hook: null
+register: driven
+success_rubric:
+  dimensions:
+  - dimension: faithfulness_to_real_process
+    weight: 4
+    evidence_class: artifact_of_consequence
+  - dimension: correctness
+    weight: 3
+    evidence_class: artifact_of_consequence
+  - dimension: research_rigor
+    weight: 2
+    evidence_class: verifiable_citation
+  - dimension: forethought
+    weight: 2
+    evidence_class: verifiable_citation
+  grader: track_lifecycle_rubric_judge_v1
+  lagging_signals:
+  - reached_completed_state
+  - artifact_git_churn
+  - revert_or_rework_mention
+  - began_then_abandoned_at_spec
+  anchors:
+  - instance: good-full-lifecycle-driven-end-to-end
+    band: good
+  - instance: good-audit-first-research-rigor
+    band: good
+  - instance: good-review-loop-catches-real-defects
+    band: good
+  - instance: bad-impl-on-stale-branch-base-rework
+    band: bad
+  - instance: trap-workflow-shaped-work-without-lifecycle
+    band: trap
+  - instance: trap-begun-then-abandoned-at-spec
+    band: trap
+  - instance: hidden-virtue-state-field-drift-masks-completion
+    band: hidden_virtue
+outcome_predicate:
+  terminal_state: completed
+  check: the track reached completed with a reflection.md recording what shipped and all review gates satisfied

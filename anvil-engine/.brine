@@ -1,0 +1,2 @@
+language: rust
+features: "features/**/*.feature"

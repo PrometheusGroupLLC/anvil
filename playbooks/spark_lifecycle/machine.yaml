@@ -1,0 +1,36 @@
+kind: spark
+register: free
+projection_only: true
+route:
+  triggers: []
+directory: sparks
+registry: sparks.md
+parent_kind: ~
+description: "Projection-only capture of an out-of-band idea."
+required_fields:
+  - name: name
+    field_type: string
+    description: Spark body or idea text
+roles:
+  - doer
+states:
+  - name: captured
+    role_filters: [doer_actionable]
+    registry_section: captured
+    projection_targets: [sparks.md]
+    is_review_gate: false
+    # Spark is fire-and-forget: `captured` is its single, final resting state
+    # with no follow-on transition, so it is terminal (the contiguity gate
+    # rejects a non-terminal state that has no outgoing transition).
+    is_terminal: true
+    hooks_by_role:
+      doer: capture.md
+    measurement_by_role:
+      doer:
+        intent: Capture the spark as an out-of-band idea without creating a lifecycle artifact.
+        expected_output: An appended spark event in sparks/sparks.md and an updated sparks projection.
+        success_criteria: A single spark entry is appended to `sparks/sparks.md` carrying the idea text verbatim, with zero lifecycle artifact (no proposal, track, or decision) created and zero edits to any other artifact's files — capture stays fire-and-forget.
+transitions: []
+outcome_predicate:
+  terminal_state: captured
+  check: the spark reached captured as an appended sparks.md entry with no lifecycle artifact spawned

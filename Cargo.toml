@@ -1,0 +1,42 @@
+[workspace]
+members = [
+    "anvil-core",
+    "anvil-core-hearth",
+    "anvil-engine",
+    "anvil-mcp",
+    "anvil-test-support",
+    "anvil-core-steps",
+    "anvil-engine-steps",
+    "anvil-mcp-steps",
+    "vendor/foundry-engine-addressing",
+    "vendor/foundry-kit-telemetry",
+]
+resolver = "2"
+
+# An `"a" | "a"` duplicate in a match arm or a repeated key in a literal list is
+# exactly how the blanket rename deleted the pre-migration name field and the
+# retired artifact type: rustc SAW it, said "unreachable pattern", and the
+# warning shipped un-acted-on. A warning nobody must act on is not a gate.
+[workspace.lints.rust]
+unreachable_patterns = "deny"
+
+[workspace.dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+rand = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "macros", "io-util", "process", "net", "sync", "signal"] }
+tonic = "0.12"
+tonic-build = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+axum = { version = "0.7", features = ["ws"] }
+tower = "0.4"
+http = "1"
+futures-util = "0.3"
+tokio-tungstenite = "0.24"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+libc = "0.2"
+sha2 = "0.10"

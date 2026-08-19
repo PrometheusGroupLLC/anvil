@@ -1,0 +1,16 @@
+[package]
+name = "foundry-engine-addressing"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "Engine-addressing contract: rendezvous record writer + honest-health resolver. Vendored into anvil so the engine builds with no dependency on a private repository."
+publish = false
+
+[lib]
+name = "foundry_engine_addressing"
+path = "src/lib.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"

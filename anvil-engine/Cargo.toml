@@ -1,0 +1,65 @@
+[package]
+name = "anvil-engine"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+# Unpublishable: versionless path deps (not resolvable from crates.io).
+publish = false
+
+[features]
+# Enable the production Foundry session verifier (wraps foundry-kit-broker-client).
+# Unix-only: the broker client uses Unix domain sockets.
+foundry-session = ["dep:foundry-kit-broker-client"]
+
+[dependencies]
+anvil-core-hearth = { path = "../anvil-core-hearth" }
+sha2 = { workspace = true }
+anvil-core = { path = "../anvil-core" }
+prost = { workspace = true }
+prost-types = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+chrono = { workspace = true }
+axum = { workspace = true }
+tower = { workspace = true }
+http = { workspace = true }
+futures-util = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+libc = { workspace = true }
+rand = { workspace = true }
+foundry-engine-addressing = { path = "../vendor/foundry-engine-addressing" }
+foundry-kit-telemetry = { path = "../vendor/foundry-kit-telemetry" }
+
+[target.'cfg(unix)'.dependencies]
+foundry-kit-broker-client = { path = "../../foundry/crates/foundry-kit-broker-client", optional = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }
+
+[dev-dependencies]
+anvil-engine-steps = { path = "../anvil-engine-steps" }
+anvil-test-support = { path = "../anvil-test-support" }
+
+# The long-running engine process (gRPC API).
+[[bin]]
+name = "anvil-engine"
+path = "src/main.rs"
+
+# The per-harness hook INSTALLER + runtime gate (install/uninstall/gate-check).
+# Shares anvil-core's pure adapters + gate-check decision and the engine's gRPC
+# client; the installer computes the hook set from the hearth (no daemon needed),
+# the gate consults the running engine's begin_adoption_status.
+[[bin]]
+name = "anvil-hooks"
+path = "src/bin/anvil-hooks.rs"
+
+[[test]]
+name = "brine_runner"
+harness = false
+
+[lints]
+workspace = true

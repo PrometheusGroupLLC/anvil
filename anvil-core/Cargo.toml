@@ -1,0 +1,33 @@
+[package]
+name = "anvil-core"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+# No technical blocker — it packages cleanly; remove this line to actually publish.
+publish = false
+
+[features]
+# Enables test-only APIs (seed overrides, etc.) used by anvil-test-support.
+# Never enabled in production builds. Activated via dev-dependency feature flag.
+test-support = []
+
+[dependencies]
+chrono = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+sha2 = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+anvil-core-steps = { path = "../anvil-core-steps" }
+anvil-test-support = { path = "../anvil-test-support" }
+tempfile = "3"
+
+[[test]]
+name = "brine_runner"
+harness = false
+
+[lints]
+workspace = true

@@ -1,0 +1,137 @@
+kind: initiative
+register: free
+route:
+  triggers: []
+directory: initiatives
+registry: initiatives.md
+parent_kind: ~
+description: "Create, manage, and track initiatives — cross-cutting implementation expectations with evidence."
+required_fields:
+  - name: name
+    field_type: string
+    description: Initiative title
+roles:
+  - doer
+  - draft
+  - reviewer
+  - promote
+  - demote
+  - retire
+  - log
+  - reflect
+states:
+  - name: draft
+    role_filters: [doer_actionable]
+    registry_section: draft
+    projection_targets: [initiatives.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: draft.md
+      draft: draft.md
+  - name: draft_review
+    role_filters: [review_pending]
+    registry_section: draft
+    projection_targets: [initiatives.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: draft.md
+  - name: draft_revision
+    role_filters: [doer_actionable]
+    registry_section: draft
+    projection_targets: [initiatives.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: revise.md
+      draft: revise.md
+  - name: active
+    role_filters: [doer_actionable]
+    registry_section: active
+    projection_targets: [initiatives.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      promote: promote-demote.md
+      retire: retire.md
+      log: log.md
+      reflect: reflect.md
+  - name: promoted
+    role_filters: [doer_actionable]
+    registry_section: promoted
+    projection_targets: [initiatives.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      demote: promote-demote.md
+      retire: retire.md
+      log: log.md
+  - name: retired
+    role_filters: [terminal]
+    registry_section: retired
+    projection_targets: [initiatives.md]
+    is_review_gate: false
+    is_terminal: true
+    hooks_by_role:
+      doer: retire.md
+      retire: retire.md
+transitions:
+  - from_state: draft
+    to_state: draft_review
+    required_role: draft
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: draft_review
+    to_state: draft_revision
+    required_role: draft
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: draft_review
+    to_state: active
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: draft_revision
+    to_state: draft_review
+    required_role: draft
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: active
+    to_state: promoted
+    required_role: promote
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: promoted
+    to_state: active
+    required_role: demote
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: active
+    to_state: retired
+    required_role: retire
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: promoted
+    to_state: retired
+    required_role: retire
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: active
+    to_state: active
+    required_role: log
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: promoted
+    to_state: promoted
+    required_role: log
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: active
+    to_state: active
+    required_role: reflect
+    required_satisfaction: ~
+    requires_approver: false
+outcome_predicate:
+  terminal_state: active
+  check: the initiative reached active with an approver-signed draft_review satisfied, so it is a tracked cross-cutting expectation rather than an unreviewed draft

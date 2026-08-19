@@ -1,0 +1,43 @@
+[package]
+name = "anvil-core-hearth"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+# Unpublishable: its anvil-core dependency is a versionless path dep — add a version to fix.
+publish = false
+
+[dependencies]
+anvil-core = { path = "../anvil-core" }
+chrono = { workspace = true }
+rand = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+# ERRATUM-6 / C-r.7a assertion 4a: the real Catalog + Describe answer over a
+# real hearth, printed as JSON. Foundry's Brine seam invokes this binary; its
+# absence is a hard RED there, never a skip.
+[[bin]]
+name = "anvil-hearth-probe"
+path = "src/bin/anvil_hearth_probe.rs"
+
+# The auditable backfill for the `state:` header defect: derives each
+# artifact's true state from its `transitions/` event store and reports (or,
+# with --apply, repairs) a header that disagrees. Report-only by default —
+# governance files are never rewritten as a side effect of looking.
+[[bin]]
+name = "anvil-status-header-reconcile"
+path = "src/bin/anvil_status_header_reconcile.rs"
+
+# Stage A of the change record: establish a hearth's baseline. Separate from
+# the divergence report binary, which is required to write nothing — import
+# must write a commit, so one binary cannot honour both.
+[[bin]]
+name = "anvil-change-record-import"
+path = "src/bin/anvil_change_record_import.rs"
+
+[lints]
+workspace = true

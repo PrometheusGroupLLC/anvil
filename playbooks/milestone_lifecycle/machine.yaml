@@ -1,0 +1,271 @@
+kind: milestone
+register: free
+route:
+  triggers: []
+directory: milestones
+registry: milestones.md
+parent_kind: ~
+description: "Delivery-scoped outcome that spans proposals and tracks."
+required_fields:
+  - name: name
+    field_type: string
+    description: Milestone title
+roles:
+  - doer
+  - reviewer
+  - amend
+  - reflect
+states:
+  - name: draft
+    role_filters: [doer_actionable]
+    registry_section: draft
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: draft.md
+    measurement_by_role:
+      doer:
+        intent: "Draft the delivery outcome, contributing work, success criteria, and current readiness judgment."
+        expected_output: "A definition.md milestone draft ready for draft review."
+        success_criteria: "A `definition.md` states the delivery outcome as a verifiable end-state, lists every contributing proposal or track by id, declares at least 1 falsifiable success criterion (naming a threshold, artifact, or zero-case), and gives an honest readiness judgment naming what is not yet done."
+  - name: draft_review
+    role_filters: [review_pending]
+    registry_section: draft
+    projection_targets: [milestones.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: draft-review.md
+    measurement_by_role:
+      reviewer:
+        intent: "Review whether the milestone outcome is specific, delivery-scoped, verifiable, and honest about readiness."
+        expected_output: "A review.md entry with satisfied sign-off or specific findings."
+        success_criteria: "A `review.md` verdict addresses all four of outcome specificity, delivery scope, criterion verifiability, and readiness honesty. A satisfied verdict cites the specific `definition.md` evidence clearing each (the named verifiable end-state, the contributing proposal/track ids, at least 1 falsifiable success criterion, and the honest readiness note); a needs_revision verdict names at least 1 specific gap among those four. No verdict is satisfied while any declared success criterion is non-verifiable or any dimension is left unassessed."
+  - name: draft_revision
+    role_filters: [doer_actionable]
+    registry_section: draft
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: milestone-revise.md
+    measurement_by_role:
+      doer:
+        intent: "Revise the milestone draft in response to draft-review findings."
+        expected_output: "An updated definition.md plus review.md dispositions for every finding."
+        success_criteria: "An updated `definition.md` plus a `review.md` response dispositioning every finding (addressed or rejected-with-rationale), leaving zero findings undispositioned."
+  - name: active
+    role_filters: [doer_actionable]
+    registry_section: active
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: terminal.md
+      amend: amend.md
+      reflect: reflect.md
+    measurement_by_role:
+      doer:
+        intent: "Complete, supersede, or abandon an active milestone with human approval."
+        expected_output: "A terminal transition preserving the closure rationale."
+        success_criteria: "A terminal transition to completed, superseded, or abandoned records the closure rationale and carries the required human approver sign-off, with zero terminal moves made without an approver."
+      amend:
+        intent: "Append a milestone amendment when the delivery outcome or success criteria change after activation."
+        expected_output: "An append-only amendments.md entry ready for amendment review."
+        success_criteria: "A numbered append-only entry in `amendments.md` names which delivery outcome or success criterion changed, why, and its impact on the milestone's contributing work, with the frozen `definition.md` unedited (zero diff outside `amendments.md`)."
+      reflect:
+        intent: "Reflect on the milestone's delivery delta and whether success criteria were met."
+        expected_output: "A reflection.md artifact ready for reflection review."
+        success_criteria: "A `reflection.md` states, per declared success criterion, whether it was met with evidence, names the delivery delta between planned and realized outcome, and owns at least 1 criterion that fell short (or states none did, with evidence)."
+  - name: amend
+    role_filters: [doer_actionable]
+    registry_section: active
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      amend: amend.md
+    measurement_by_role:
+      amend:
+        intent: "Append a milestone amendment when the delivery outcome or success criteria change after activation."
+        expected_output: "An append-only amendments.md entry ready for amendment review."
+        success_criteria: "A numbered append-only entry in `amendments.md` names the changed outcome or criterion, its rationale, and its impact on the milestone's contributing work, with the frozen `definition.md` unedited (zero diff outside `amendments.md`)."
+  - name: amend_review
+    role_filters: [review_pending]
+    registry_section: active
+    projection_targets: [milestones.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: amend-review.md
+    measurement_by_role:
+      reviewer:
+        intent: "Review whether the milestone amendment is necessary, scoped, and safe to approve."
+        expected_output: "A review.md amendment-review entry with satisfied sign-off or findings."
+        success_criteria: "A `review.md` amendment-review entry addresses necessity, scope, and append-only discipline. A satisfied verdict cites the `amendments.md` evidence showing the change is necessary, scoped to the stated outcome/criterion, and appended without editing the frozen `definition.md`; a needs_revision verdict names at least 1 specific gap among those three. No verdict is satisfied while the frozen `definition.md` shows a diff or any dimension is left unassessed."
+  - name: amend_revision
+    role_filters: [doer_actionable]
+    registry_section: active
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      amend: amend-revise.md
+    measurement_by_role:
+      amend:
+        intent: "Revise the milestone amendment in response to amendment-review findings."
+        expected_output: "Updated amendments.md plus review dispositions."
+        success_criteria: "An updated `amendments.md` plus a review response dispositioning every finding (addressed or rejected-with-rationale), with zero findings left open and the frozen `definition.md` unedited (zero diff outside `amendments.md`)."
+  - name: reflecting
+    role_filters: [doer_actionable]
+    registry_section: reflecting
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      reflect: reflect.md
+    measurement_by_role:
+      reflect:
+        intent: "Write the milestone reflection covering delivery delta, criteria results, and remaining risks."
+        expected_output: "A reflection.md artifact ready for reflection review."
+        success_criteria: "A `reflection.md` reports each declared success criterion's result with evidence, names the delivery delta between planned and realized outcome, and names at least 1 remaining risk to the outcome (or states there are none, backed by evidence); it is not a restatement of the definition in past tense."
+  - name: reflection_review
+    role_filters: [review_pending]
+    registry_section: reflecting
+    projection_targets: [milestones.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: reflection-review.md
+    measurement_by_role:
+      reviewer:
+        intent: "Review whether the milestone reflection accurately captures delivery readiness and unresolved gaps."
+        expected_output: "A reflection.review.md entry with satisfied sign-off or findings."
+        success_criteria: "A `reflection.review.md` verdict assesses every declared success criterion's reported result and the readiness claims. A satisfied verdict cites the `reflection.md` evidence backing each criterion result, the named delivery delta, and the remaining-risk statement; a needs_revision verdict names at least 1 criterion result or readiness claim the reflection got wrong or omitted. No verdict is satisfied while any criterion result lacks evidence or any dimension is left unassessed."
+  - name: reflection_revision
+    role_filters: [doer_actionable]
+    registry_section: reflecting
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      reflect: reflection-revise.md
+    measurement_by_role:
+      reflect:
+        intent: "Revise the milestone reflection in response to reflection-review findings."
+        expected_output: "An updated reflection.md plus reflection.review.md dispositions."
+        success_criteria: "An updated `reflection.md` plus a `reflection.review.md` response dispositioning every finding, with zero criterion-result claims left inaccurate."
+  - name: completed
+    role_filters: [terminal]
+    registry_section: completed
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: true
+    hooks_by_role:
+      doer: terminal.md
+  - name: superseded
+    role_filters: [terminal]
+    registry_section: superseded
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: true
+    hooks_by_role:
+      doer: terminal.md
+  - name: abandoned
+    role_filters: [terminal]
+    registry_section: abandoned
+    projection_targets: [milestones.md]
+    is_review_gate: false
+    is_terminal: true
+    hooks_by_role:
+      doer: terminal.md
+transitions:
+  - from_state: draft
+    to_state: draft_review
+    required_role: doer
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: draft_review
+    to_state: draft_revision
+    required_role: doer
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: draft_review
+    to_state: active
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: draft_revision
+    to_state: draft_review
+    required_role: doer
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: active
+    to_state: amend
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: amend
+    to_state: amend_review
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: amend_review
+    to_state: amend_revision
+    required_role: amend
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: amend_review
+    to_state: active
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: amend_revision
+    to_state: amend_review
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: active
+    to_state: reflecting
+    required_role: reflect
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: reflecting
+    to_state: reflection_review
+    required_role: reflect
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: reflection_review
+    to_state: reflection_revision
+    required_role: reflect
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: reflection_review
+    to_state: active
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: reflection_revision
+    to_state: reflection_review
+    required_role: reflect
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: active
+    to_state: completed
+    required_role: doer
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: active
+    to_state: superseded
+    required_role: doer
+    required_satisfaction: ~
+    requires_approver: true
+  - from_state: active
+    to_state: abandoned
+    required_role: doer
+    required_satisfaction: ~
+    requires_approver: true
+outcome_predicate:
+  terminal_state: completed
+  check: the milestone reached completed via an approver-signed terminal transition that recorded the closure rationale, after its draft_review gate was satisfied — the delivery-scoped outcome was closed as delivered rather than superseded or abandoned

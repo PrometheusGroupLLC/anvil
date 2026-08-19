@@ -1,0 +1,1918 @@
+syntax = "proto3";
+
+package anvil;
+
+service AnvilService {
+  rpc Catalog(CatalogRequest) returns (CatalogResponse);
+  rpc Checkin(CheckinRequest) returns (CheckinResponse);
+  rpc Describe(DescribeRequest) returns (DescribeResponse);
+  rpc Route(RouteRequest) returns (RouteResponse);
+  rpc Begin(BeginRequest) returns (BeginResponse);
+  rpc Snapshot(SnapshotRequest) returns (SnapshotResponse);
+  rpc Complete(CompleteRequest) returns (CompleteResponse);
+  rpc Amend(AmendRequest) returns (AmendResponse);
+  rpc PersistPlaybook(PersistPlaybookRequest) returns (PersistPlaybookResponse);
+  rpc IntakeCandidatePlaybook(IntakeCandidatePlaybookRequest) returns (IntakeCandidatePlaybookResponse);
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+  rpc BeginAdoptionStatus(BeginAdoptionStatusRequest) returns (BeginAdoptionStatusResponse);
+  rpc PlaybookActivity(PlaybookActivityRequest) returns (PlaybookActivityResponse);
+  rpc UsageTimeSeries(UsageTimeSeriesRequest) returns (UsageTimeSeriesResponse);
+  rpc PlaybookStepVolume(PlaybookStepVolumeRequest) returns (PlaybookStepVolumeResponse);
+  rpc HookManifest(HookManifestRequest) returns (HookManifestResponse);
+  rpc ActorActivity(ActorActivityRequest) returns (ActorActivityResponse);
+  rpc ActivitySummary(ActivitySummaryRequest) returns (ActivitySummaryResponse);
+  rpc PlaybookFidelity(PlaybookFidelityRequest) returns (PlaybookFidelityResponse);
+  rpc JoinCoverage(JoinCoverageRequest) returns (JoinCoverageResponse);
+  rpc PlaybookAtlas(PlaybookAtlasRequest) returns (PlaybookAtlasResponse);
+  rpc PlaybookAtlasDetail(PlaybookAtlasDetailRequest) returns (PlaybookAtlasDetailResponse);
+  rpc LiveInstances(LiveInstancesRequest) returns (LiveInstancesResponse);
+  rpc ListInstanceArtifacts(ListInstanceArtifactsRequest) returns (ListInstanceArtifactsResponse);
+  rpc ReadInstanceArtifact(ReadInstanceArtifactRequest) returns (ReadInstanceArtifactResponse);
+  rpc RunDetail(RunDetailRequest) returns (RunDetailResponse);
+
+  // K8 backlog_item (plan Task 9). Genesis stays on Begin and lifecycle stays
+  // on Snapshot; these three carry the named post-genesis operations, the
+  // engine-auto evaluation, and the read-only queue projections. Appended
+  // last: a stale engine returns UNIMPLEMENTED, so WIRE_PROTO_VERSION is
+  // unchanged by an append.
+  rpc BacklogMutate(BacklogMutateRequest) returns (BacklogMutateResponse);
+  rpc BacklogEvaluate(BacklogEvaluateRequest) returns (BacklogEvaluateResponse);
+  rpc BacklogQueue(BacklogQueueRequest) returns (BacklogQueueResponse);
+}
+
+message CatalogRequest {
+  string hearth_path = 1;
+}
+
+message CatalogResponse {
+  repeated ActiveArtifact active_artifacts = 1;
+  repeated AvailableArtifactType available_types = 2;
+  // Playbook artifacts that failed machine.yaml validation. Malformed
+  // artifacts appear here and are absent from active_artifacts. One entry
+  // per malformed artifact; one artifact's failure does not block others.
+  repeated InvalidArtifact invalid_artifacts = 3;
+  // The canonical hearth path the engine actually operated on, for
+  // attribution / misrouting detection (spec Req 7, N1).
+  string resolved_hearth = 4;
+  repeated AvailableArtifactKind available_artifact_kinds = 5;
+}
+
+message AvailableArtifactKind {
+  string kind = 1;
+  string source_tier = 2;
+  bool is_described = 3;
+  bool has_triggers = 4;
+}
+
+// A playbook artifact that failed machine.yaml validation.
+message InvalidArtifact {
+  string id = 1;
+  // Stable snake_case error code from spec R5.2
+  // (e.g., "playbook_yaml_parse_error").
+  string code = 2;
+  string message = 3;
+  // Code-specific diagnostic parameters.
+  map<string, string> params = 4;
+}
+
+message ActiveArtifact {
+  string id = 1;
+  string artifact_type = 2;
+  string state = 3;
+  string summary = 4;
+  // The action an agent in the current session role would take on this
+  // artifact. "engine" if begin(identifier) supports it; otherwise
+  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  string execution_route = 5;
+}
+
+message AvailableArtifactType {
+  string name = 1;
+  string description = 2;
+  string requires_parent = 3;  // empty string if no parent required
+  // "engine" if begin(type, ...) creates this kind today; otherwise
+  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  string execution_route = 4;
+}
+
+message CheckinRequest {
+  string hearth_path = 1;
+  string role = 2;
+  string actor_type = 3;
+  string actor_model = 4;
+  string actor_provider = 5;
+  // Optional caller-supplied actor name. Empty string means "absent"
+  // — the engine generates a fresh {Word}-{6 digits} name. When
+  // non-empty, the engine echoes this value verbatim as the canonical
+  // session name (no hearth scan, no validation), so callers can
+  // carry an identity forward across conversation boundaries.
+  // Plain `string` (not proto3 `optional`) because the domain layer
+  // already treats empty string as "absent" — no Option<String>
+  // wrapper needed.
+  string actor_name = 6;
+}
+
+message CheckinResponse {
+  string actor_name = 1;
+  repeated ActiveArtifact filtered_artifacts = 2;
+  repeated AvailableArtifactType available_types = 3;
+  // Engine-generated next-step instruction. Varies by role and response
+  // content; references the per-entry execution_route discriminator
+  // rather than enumerating engine-supported combinations in prose.
+  string next_step = 4;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 5;
+  // T4 — re-served hook content for any artifact the checking-in actor has an
+  // OPEN begin on, so a compacted/resumed session re-warms its standing
+  // context the same way `begin` does. Budget-capped via the shared serve path.
+  // Empty when the actor has no open begin (re-serve is purely additive).
+  string context = 6;
+}
+
+message DescribeRequest {
+  string hearth_path = 1;
+  string identifier = 2;
+}
+
+message DescribeResponse {
+  oneof info {
+    TypeInfo type_info = 1;
+    InstanceInfo instance_info = 2;
+  }
+  // Engine-generated next-step instruction. Type-level: guides the agent
+  // to collect required fields and call begin(type, ...). Instance-level:
+  // references per-action execution_route to direct the agent to
+  // begin(identifier) or to the named fallback skill.
+  string next_step = 3;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 4;
+}
+
+message TypeInfo {
+  string name = 1;
+  string description = 2;
+  repeated string required_fields = 3;
+  string parent_type = 4;
+}
+
+message InstanceInfo {
+  string id = 1;
+  string artifact_type = 2;
+  string state = 3;
+  int32 transition_count = 4;
+  TransitionDetail last_transition = 5;
+  repeated ActionInfo available_actions = 6;
+}
+
+message TransitionDetail {
+  string to = 1;
+  string at = 2;
+  string actor = 3;
+  string role = 4;
+}
+
+message ActionInfo {
+  string action = 1;
+  string required_role = 2;
+  // "engine" if this action is executed by begin(identifier); otherwise
+  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  string execution_route = 3;
+}
+
+// Route RPC request (playbook_routing_layer).
+//
+// The surface ships a free-text message (a transcript, a vision, …) and the
+// engine returns the active, driven candidate artifact_kinds for the surface
+// LLM to select from. Mirrors the anvil_orchestrate arg shape. The engine
+// constructs a fresh CompositePlaybookRegistry per call (machine.yaml +
+// register live-reload). Actor identity is carried so the no-match outcome can
+// attribute the originating intent (M-3 → candidate_playbook_intake); the route
+// RPC itself does not use actor_* for routing logic in v0.
+message RouteRequest {
+  string hearth_path = 1;     // per-call hearth resolution (mirror Describe)
+  string message = 2;         // the surface's free-text input
+  string signal = 3;          // optional coarse context tag (BP4 ranker input)
+  string surface = 4;         // recorded, never branches
+  string parent_id = 5;       // scope.parent_id (flat fallback handled shim-side)
+  string conversation_id = 6; // optional, carried through
+  string actor_name = 7;
+  string actor_type = 8;
+  string actor_model = 9;
+  string actor_provider = 10;
+  string ctx_org = 11;
+  string ctx_space = 12;      // empty string means no space constraint
+  string ctx_role = 13;
+  string ctx_clearance = 14;
+  // The originating harness id ("claude-code" | "codex" | "kiln" | "hermes" |
+  // "grok" | "opencode"), tagged by the per-harness route-turn hook so each
+  // routed turn is self-describing. Optional/additive: empty when an older hook
+  // (no --source) calls — recorded as the empty source, never an error.
+  string source = 15;
+  // Raw project/workspace root travels on the wire only. The engine writes only
+  // basename(project_root) as project_label on durable sinks.
+  string project_root = 16;
+
+  // continuation_recognition — what only the HOOK has: the conversation.
+  // PURE APPEND (fields 17, 18; both empty/absent by default, so every
+  // transcript-less surface stays byte-identical to today).
+  //
+  // `recent_context` is the existing digest, and its PRESENCE is load-bearing:
+  // step 7 widens only when the hook actually looked at a tail and found no
+  // proposal, which is a different fact from having no tail at all.
+  string recent_context = 17;
+  // Emitted only when the last assistant turn carries ONE unambiguous proposal
+  // by shape. `was_truncated` is set AT CUT TIME — an ellipsis appended by the
+  // digest cap is indistinguishable from an author's own, so truncation cannot
+  // be inferred afterwards.
+  PriorProposal prior_proposal = 18;
+}
+message PriorProposal {
+  string text = 1;
+  bool was_truncated = 2;
+}
+
+
+// Route RPC response (playbook_routing_layer).
+message RouteResponse {
+  string outcome = 1;                     // legacy: "candidates" | "no_match"
+  repeated CandidateMeta candidates = 2;  // granted driven candidate set
+  string handoff = 3;                     // "candidate_playbook_intake" when no_match
+  string intent = 4;                      // originating message text, when no_match (M-3)
+  string resolved_hearth = 5;
+  string selected_kind = 6;               // resolver-selected playbook kind; empty when none
+  string resolution_outcome = 7;          // "single" | "ambiguous" | "no_match"
+  repeated string matching_candidates = 8;
+  // route_response_mirrors_begin: the begin-equivalent first-step guidance served
+  // for a SINGLE resolution — the SAME resolved + budget-capped, PRE-interpolation
+  // hook body begin reads for the selected kind's initial (state, doer). Empty for
+  // candidates / no_match, and empty when enrichment fails (fail-open). PURE APPEND.
+  string guidance = 9;
+  // resume_aware_routing — the resume pre-check outcome. PURE APPEND. When the
+  // message is a continuation token AND the conversation has an open (non-terminal)
+  // playbook run, `resolution_outcome` is "resume" and these carry the open artifact's
+  // id, kind, current state, the current (state, role) next-step guidance, and the
+  // supported advance action for that state. All empty for single/candidates/no_match.
+  string resume_artifact_id = 10;
+  string resume_kind = 11;
+  string resume_state = 12;
+  string resume_guidance = 13;
+  string resume_advance_action = 14;
+  // resume_signal_context_awareness — the PARK HINT. PURE APPEND (message
+  // field 15 → prost Option<ParkHint>, absent by default). Populated ONCE per
+  // open artifact (surface-once, engine-side) when the resume nudge is
+  // SUPPRESSED because the conversation has moved on to unrelated work: it names
+  // the open artifact and the machine-declared abandon (park) action so the
+  // agent/user can park the dangling track instead of being nagged to resume it.
+  // Absent on every other turn (including the turn AFTER it surfaced).
+  ParkHint park_hint = 15;
+
+  // continuation_recognition — WHY this turn resolved the way it did. PURE
+  // APPEND (field 16, empty string means "not a continuation path"). Values:
+  //   continuation_token      the seven exact tokens — today's resume
+  //   prior_proposal          resumed the open run, resolved via prior context
+  //   prior_proposal_redirect routed to a DIFFERENT kind the assistant proposed
+  //   widened_no_proposal     resumed on affirmation with no usable proposal
+  //   rejected                a rejection/deferral declined the contextual path
+  //
+  // This exists so widening recall cannot silently inflate the `single` count
+  // and read as new-playbook adoption, and so each widening's real rate is
+  // measurable rather than argued. The hook persists it to delivery-log.jsonl;
+  // asserting it anywhere earlier proves nothing, because the failure mode is a
+  // field that stops partway down the chain.
+  string resume_source = 16;
+
+  // conversation_scoped_join — the SAME salted conversation hash this turn's
+  // routing-activity and activity-log rows already carry, handed to the hook so
+  // it can persist it verbatim to delivery-log.jsonl. PURE APPEND (field 17).
+  // Empty when the engine has no salt. The hook must NEVER compute its own: a
+  // second hasher lands in a disjoint keyspace whose only symptom is a low
+  // coverage number with no visible cause.
+  string conversation_hash = 17;
+}
+
+// resume_signal_context_awareness — the park affordance surfaced alongside a
+// SUPPRESSED resume nudge. `park_action` is the machine-declared abandon-edge
+// action string for `(kind, state)` (as surfaced by available_actions), e.g.
+// "snapshot → abandoned (role: doer)". Empty when the open state declares no
+// abandon edge.
+message ParkHint {
+  string artifact_id = 1;
+  string kind = 2;
+  string state = 3;
+  string park_action = 4;
+}
+
+// Selection metadata for one candidate artifact_kind.
+message CandidateMeta {
+  string kind = 1;
+  string description = 2;
+  repeated string required_fields = 3;
+  // route_response_mirrors_begin Phase 2 — per-candidate annotations so the model
+  // can choose deliberately. PURE APPEND (field numbers 4-6); 4 was formerly a
+  // reserved-in-comment trigger_intent, never wire-used.
+  // The (initial_state, doer) MeasurementSpec.intent, or the machine description
+  // when the kind declares no such spec.
+  string intent = 4;
+  // The machine's state names in order.
+  repeated string step_outline = 5;
+  // The concrete match signal that produced this candidate — the matched trigger
+  // phrase or the description-overlap term(s). Cites the actual signal so it is
+  // checkable, not free prose.
+  string why_fits = 6;
+  // The playbook machine's authored route.triggers. These are action-phrase
+  // hints for hook-layer LLM routing; empty when the machine declares none.
+  repeated string route_triggers = 7;
+}
+
+// One caller-claimed evidence item attached to a lifecycle state entry.
+// `class` is an EvidenceClass snake-case token. `reference` is copied as an
+// opaque identifier: the engine does not parse, normalize, resolve, or
+// dereference it, and no raw request prose/path field is part of this carrier.
+message ClaimedEvidence {
+  string class = 1;
+  string reference = 2;
+}
+
+// Begin RPC request.
+//
+// Required identity (empty string → INVALID_ARGUMENT from the engine's
+// domain handler, in all modes — creation, resume, review):
+//   actor_name, actor_type, actor_model, actor_provider.
+// Optional identity:
+//   actor_context_window, actor_sdk_version, actor_entrypoint.
+// The caller supplies these on every call; the engine does not infer
+// them from session state.
+message BeginRequest {
+  // Field-number hygiene: deleted BeginRequest field numbers must be declared
+  // `reserved` here and never reused. Reuse, renumbering, or wire-type changes
+  // are wire-incompatible and require a WIRE_PROTO_VERSION bump; pure append of
+  // a new field number does not.
+  string hearth_path = 1;
+  string artifact_type = 2;
+  string parent_id = 3;
+  string track_name = 4;
+  string approver = 5;
+  string actor_name = 6;       // REQUIRED — empty → ActorNameRequired
+  string actor_type = 7;       // REQUIRED — empty → ActorParamsRequired
+  string actor_model = 8;      // REQUIRED — empty → ActorParamsRequired
+  string actor_provider = 9;   // REQUIRED — empty → ActorParamsRequired
+  int64 actor_context_window = 10;   // optional
+  string actor_sdk_version = 11;     // optional
+  string actor_entrypoint = 12;      // optional
+  // Set when begin operates on an existing artifact (review, resume, etc.).
+  // Mutually exclusive with artifact_type — exactly one must be set.
+  string identifier = 13;
+  // The session role from the prior checkin ("creator", "reviewer",
+  // "resumer"). The MCP shim populates this on every begin call.
+  string session_role = 14;
+  // Name field for playbook creation. Parallel to track_name for tracks.
+  // Set when artifact_type = "playbook".
+  string playbook_name = 15;
+  // Owner descriptor (kit id or user/Space) the created instance is destined
+  // for. Wire-optional; required-ness is machine-driven (a machine declaring a
+  // `target_owner` descriptor in its required_fields). Recorded verbatim on the
+  // created instance's status.yaml. (Anvil-lane 1b.)
+  string target_owner = 16;
+  string ctx_org = 17;
+  string ctx_space = 18;      // empty string means no space constraint
+  string ctx_role = 19;
+  string ctx_clearance = 20;
+  string rd_turn_id = 21;
+  string rd_input = 22;
+  string rd_candidate_set = 23;
+  string rd_selected = 24;
+  string rd_confidence = 25;
+  // Generic field bag for ANY machine-declared required field outside the
+  // builtin set (track_name, parent_id, approver, playbook_name, target_owner).
+  // Wire-optional; required-ness is machine-driven. Declared values are
+  // recorded verbatim on the created instance's status.yaml (deterministic key
+  // order) and interpolated into the first hook's context_text.
+  map<string, string> create_fields = 26;
+  // The originating conversation id (resume-aware routing). PURE APPEND.
+  // Recorded on the durable open-begin marker so a later continuation message
+  // can resolve the conversation's open playbook run. DISTINCT from rd_turn_id (the
+  // routing-decision turn id); both may be set. Empty when the surface omits it.
+  string conversation_id = 27;
+  // Raw project/workspace root travels on the wire only. The engine writes only
+  // basename(project_root) as project_label on durable sinks.
+  string project_root = 28;
+  // Explicit opt-in to ADOPT an out-of-engine artifact: when set on an
+  // `identifier` begin, the engine takes the (pre-governance) artifact back to
+  // its machine's initial state and drives it through the full playbook run.
+  // Field number 29 is a proto3 append, but adoption drove a WIRE_PROTO_VERSION
+  // bump (1 -> 2) anyway: a pre-adoption engine SILENTLY IGNORES this field, so
+  // `adopt: true` would degrade into a plain begin with no error and no reset.
+  // The bump makes the shim refuse a sub-v2 engine outright rather than let that
+  // silent divergence through. Default false leaves every existing begin path
+  // byte-identical.
+  bool adopt = 29;
+  // Optional ordered evidence claims for the lifecycle state entry. Empty is
+  // omitted by proto3 and preserves the legacy payload byte-for-byte.
+  repeated ClaimedEvidence claimed_evidence = 30;
+}
+
+message BeginResponse {
+  string track_path = 1;
+  string state = 2;
+  string context_text = 3;
+  // For review flow: the text of the artifact being reviewed (e.g., spec.md).
+  string artifact_text = 4;
+  // For review flow: combined review protocol + type-specific criteria.
+  string review_context_text = 5;
+  // For review flow: absolute path to the review document the agent writes.
+  string review_doc_path = 6;
+  // Engine-generated next-step instruction. References the per-entry
+  // execution_route discriminator for new spec-phase routing entries
+  // (R5.3). Guides the agent on what to call next (e.g., complete with
+  // satisfaction: "satisfied" after reviewing).
+  string next_step = 7;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 8;
+  string intent = 9;
+  string expected_output = 10;
+  string playbook_id = 11;
+}
+
+// Snapshot RPC request.
+//
+// Required-field conventions (proto3 has no `required`, so these are
+// enforced by the engine handler — empty strings fail validation):
+//
+// Non-projection-only mode:
+//   REQUIRED: artifact_path, to_state, actor_role, actor_name,
+//             actor_type, actor_model, actor_provider.
+//   OPTIONAL: approver, note, actor_context_window, actor_sdk_version,
+//             actor_entrypoint.
+//   Empty `actor_name` → ActorNameRequired → INVALID_ARGUMENT.
+//   Empty actor_type / actor_model / actor_provider →
+//     ActorParamsRequired → INVALID_ARGUMENT.
+//   The engine does not generate names server-side — callers supply
+//   actor_name on every call.
+//
+// Projection-only mode (projection_only = true):
+//   REQUIRED: artifact_path, event_type ∈ {"spark", "annotation"}.
+//   Identity fields are ignored in this mode.
+message SnapshotRequest {
+  string hearth_path = 1;
+  string artifact_path = 2;  // relative to hearth (e.g., "tracks/20260416T0155_...")
+  string to_state = 3;
+  string actor_name = 4;     // REQUIRED — empty → ActorNameRequired
+  string actor_role = 5;
+  string approver = 6;
+  string note = 7;
+  string actor_type = 8;     // REQUIRED — empty → ActorParamsRequired
+  string actor_model = 9;    // REQUIRED — empty → ActorParamsRequired
+  string actor_provider = 10; // REQUIRED — empty → ActorParamsRequired
+  int64 actor_context_window = 11;  // optional
+  string actor_sdk_version = 12;    // optional
+  string actor_entrypoint = 13;     // optional
+  // Projection-only mode (spark capture / annotation). When true, skip
+  // status.yaml and registry writes.
+  bool projection_only = 14;
+  // In projection-only mode: "spark" or "annotation". Empty → INVALID_ARGUMENT.
+  string event_type = 15;
+  // Optional override for the raw surface session id. When empty, the engine
+  // inherits from the open begin marker for artifact_path.
+  string conversation_id = 16;
+  // Raw project/workspace root travels on the wire only. The engine writes only
+  // basename(project_root) as project_label on durable sinks.
+  string project_root = 17;
+  // Optional ordered evidence claims for a non-projection lifecycle state
+  // entry. Projection-only events carry no lifecycle evidence assessment.
+  repeated ClaimedEvidence claimed_evidence = 18;
+}
+
+message SnapshotResponse {
+  bool success = 1;
+  string timestamp = 2;
+  bool status_updated = 3;
+  bool registry_updated = 4;
+  repeated string projections_updated = 5;
+  repeated string warnings = 6;
+  // The actor name used for this transition. Always populated — echoes
+  // the supplied value when non-empty, otherwise returns the engine-
+  // generated name.
+  string actor_name = 7;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 8;
+}
+
+// Complete RPC request.
+//
+// Required identity (enforced by domain handler):
+//   artifact_path, actor_name, actor_type, actor_model, actor_provider.
+// Optional identity:
+//   actor_context_window, actor_sdk_version, actor_entrypoint.
+// Optional playbook:
+//   satisfaction — when empty: doer path (no satisfaction judgment);
+//                  "satisfied": reviewer accept → plan (Slice A);
+//                  "full_revision": reviewer revision → spec_revision (Slice B);
+//                  "address_in_next_step": reviewer carry-forward → plan, writes
+//                    carry-forward.md (Slice C; REQUIRES non-empty `findings`);
+//                  any other value: satisfaction_unknown error.
+//   findings — verbatim reviewer carry-forward observations. REQUIRED (non-empty)
+//              when satisfaction == "address_in_next_step"; ignored otherwise.
+//   approver — who authorized this (reviewer path).
+//   note — free-text note.
+message CompleteRequest {
+  string artifact_path = 1;   // REQUIRED — empty → artifact_path_required
+  string actor_name = 2;      // REQUIRED — empty → actor_name_required
+  string actor_type = 3;      // REQUIRED — empty → actor_params_required
+  string actor_model = 4;     // REQUIRED — empty → actor_params_required
+  string actor_provider = 5;  // REQUIRED — empty → actor_params_required
+  int64 actor_context_window = 6;  // optional
+  string actor_sdk_version = 7;    // optional
+  string actor_entrypoint = 8;     // optional
+  string satisfaction = 9;    // optional — see above
+  string approver = 10;       // optional
+  string note = 11;           // optional
+  // Optional: actor's free-form narrative. When non-empty, the engine
+  // writes a reflection file to `<source_state>_reflection/<timestamp>-<actor>.md`.
+  // When empty, no file is written and behavior is identical to Slice A.
+  string reflection_notes = 12;
+  // Per-request target hearth (spec Req 1). Empty → engine uses its --hearth
+  // spawn default (no-regression path). Non-empty → engine resolves and
+  // validates this hearth and operates on it, overriding the default.
+  string hearth_path = 13;
+  // Verbatim reviewer carry-forward findings (Slice C). REQUIRED (non-empty)
+  // when satisfaction == "address_in_next_step"; ignored otherwise. Empty →
+  // findings_required_for_address_in_next_step when satisfaction is
+  // "address_in_next_step".
+  string findings = 14;
+  // Optional override for the raw surface session id. When empty, the engine
+  // inherits from the open begin marker for artifact_path.
+  string conversation_id = 15;
+  // Raw project/workspace root travels on the wire only. The engine writes only
+  // basename(project_root) as project_label on durable sinks.
+  string project_root = 16;
+  // Optional ordered evidence claims for the lifecycle completion.
+  repeated ClaimedEvidence claimed_evidence = 17;
+}
+
+// Complete RPC response.
+//
+// Always populated on success:
+//   new_state — the state the artifact moved to (e.g., "spec_review", "plan")
+//   transition_at — ISO-8601 timestamp of the recorded transition
+//   artifact_path — echoed from the request
+//   next_step — engine-generated guidance on what to do after this complete
+//     call. References the per-entry execution_route discriminator for
+//     the new routing entries (R5.3). Non-empty on success.
+message CompleteResponse {
+  string new_state = 1;
+  string transition_at = 2;
+  string artifact_path = 3;
+  string next_step = 4;
+  // Populated when reflection_notes was non-empty and the file was written;
+  // empty string otherwise (the shim drops the key when empty).
+  string reflection_path = 5;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 6;
+  // Machine-readable, non-blocking warnings (e.g. begin-adoption soft-warn).
+  // The transition still succeeds when warnings are present.
+  repeated string warnings = 7;
+  // Absolute path to the carry-forward.md written on the
+  // complete(satisfaction: "address_in_next_step") success path (Slice C).
+  // Empty string otherwise (the shim drops the key when empty).
+  string carry_forward_path = 8;
+}
+
+// Amend RPC request (B5b, spec D-5).
+//
+// Validates a submitted structured amendment op against the kind's content
+// schema + the artifact's persisted op log, appends it to the per-document
+// op-log file, and (for a machine-declared amend edge) drives the
+// `<current_state> → amend` transition. Mirrors CompleteRequest's identity
+// conventions (proto3 has no `required`; empty strings fail validation).
+//
+// Required identity (enforced by the domain handler):
+//   artifact_path, target_document, actor_name, actor_type, actor_model,
+//   actor_provider.
+// Optional identity:
+//   actor_context_window, actor_sdk_version, actor_entrypoint.
+message AmendRequest {
+  string hearth_path = 1;       // per-request target hearth (mirror CompleteRequest)
+  string artifact_path = 2;     // REQUIRED — empty → artifact_path_required
+  string kind = 3;             // amendment kind (one of 8) — schema_for_kind
+  string target_document = 4;   // REQUIRED — frozen document (e.g. "spec", "plan")
+  string target_id = 5;        // element id within the document's op log
+  string op_kind = 6;          // op kind (add/revise/retire/reorder)
+  string body = 7;             // op body payload (empty → None)
+  string new_kind = 8;         // new element kind for Add (optional, empty → None)
+  string anchor = 9;           // positioning anchor for Add/Reorder (optional)
+  string actor_name = 10;       // REQUIRED — empty → actor_name_required
+  string actor_type = 11;       // REQUIRED — empty → actor_params_required
+  string actor_model = 12;      // REQUIRED — empty → actor_params_required
+  string actor_provider = 13;   // REQUIRED — empty → actor_params_required
+  int64 actor_context_window = 14;  // optional
+  string actor_sdk_version = 15;    // optional
+  string actor_entrypoint = 16;     // optional
+}
+
+// Amend RPC response (B5b, spec D-5).
+message AmendResponse {
+  string op_id = 1;            // the recorded op's stable id
+  string resolved_hearth = 2;   // the canonical hearth the engine operated on
+  // Populated only when a state transition was driven; empty string otherwise
+  // (the shim drops the key when empty, mirroring CompleteResponse.reflection_path).
+  string new_state = 3;
+}
+
+// PersistPlaybook RPC (track 1a — persist-to-owner-home primitive).
+//
+// Loader-validates a generated playbook machine and writes it to a GIVEN
+// owner-home path, registry-resolvable from there. Writes
+// `<owner_home>/playbooks/<kind>/machine.yaml` and NO status.yaml (status.yaml's
+// absence keeps the kind registry-resolvable-but-not-begin-able). Engine-facing
+// only — no shim passthrough this slice. Mirrors AmendRequest's identity
+// conventions (proto3 has no `required`; empty strings fail validation).
+//
+// `hearth_path` is the engine's OWN hearth (used for authorize/lock context
+// only); `owner_home` is the TARGET — the duplicate-kind check and the write
+// both happen under `owner_home`, NOT the engine hearth.
+message PersistPlaybookRequest {
+  string hearth_path = 1;      // per-request engine hearth (authorize/lock scope only)
+  string owner_home = 2;       // REQUIRED — absolute path to the target owner-home
+  string kind = 3;             // REQUIRED — the playbook kind (dir name under playbooks/)
+  string machine_yaml = 4;     // REQUIRED — the generated machine.yaml text
+  string actor_name = 5;       // REQUIRED — empty → actor_name_required
+  string actor_type = 6;       // REQUIRED — empty → actor_params_required
+  string actor_model = 7;      // REQUIRED — empty → actor_params_required
+  string actor_provider = 8;   // REQUIRED — empty → actor_params_required
+  int64  actor_context_window = 9;   // optional
+  string actor_sdk_version = 10;     // optional
+  string actor_entrypoint = 11;      // optional
+  repeated PlaybookHook hooks = 12;  // optional hook files written beside machine.yaml
+}
+
+// A single hook file carried alongside a persisted playbook machine. `name` is
+// the filename under `hooks/` (e.g. "intent.md") referenced by a state's or
+// transition's `hook` field; `content` is the hook body.
+message PlaybookHook {
+  string name = 1;     // filename under hooks/ (e.g. "intent.md")
+  string content = 2;  // the hook body
+}
+
+message PersistPlaybookResponse {
+  string kind = 1;                 // the persisted kind (echo)
+  string written_path = 2;         // absolute path to the written machine.yaml
+  string resolved_owner_home = 3;  // the owner-home the engine wrote under
+}
+
+message CandidatePlaybook {
+  message ProposedState {
+    string state = 1;
+    string role = 2;
+    string intent = 3;
+    string expected_output = 4;
+    repeated string evidence_obligation = 6;
+  }
+  message RubricDimension {
+    string dimension = 1;
+    uint32 weight = 2;
+    string evidence_class = 3;
+  }
+  message AnchorRef {
+    string instance = 1;
+    string band = 2;
+  }
+  message SuccessRubric {
+    repeated RubricDimension dimensions = 1;
+    string grader = 2;
+    repeated string lagging_signals = 3;
+    repeated AnchorRef anchors = 4;
+  }
+  message OutcomeLink {
+    string authority = 1;
+    string opaque_ref = 2;
+    string verified_at = 3;
+  }
+  message ExemplarProvenance {
+    string source = 1;
+    string corpus = 2;
+  }
+  message ExemplarFrontmatter {
+    string id = 1;
+    string band = 2;
+    repeated string dimensions = 3;
+    string evidence_class = 4;
+    OutcomeLink outcome_link = 5;
+    ExemplarProvenance provenance = 6;
+    string playbook_version = 7;
+    string refreshed_at = 8;
+  }
+  message Exemplar {
+    ExemplarFrontmatter frontmatter = 1;
+    string body = 2;
+  }
+  message LedgerClassification {
+    string corpus = 1;
+    string ledger = 2;
+    string classification = 3;
+  }
+  message NoneYetJustification {
+    string corpus_searched = 1;
+    string ledger_searched = 2;
+    string why_no_exemplar = 3;
+    bool production_routing_allowed = 4;
+    string followup_condition = 5;
+  }
+
+  string source = 1;
+  string intent = 2;
+  string at = 3;
+  repeated string evidence = 4;
+  repeated ProposedState proposed_states = 5;
+  string route_description = 6;
+  repeated string route_triggers = 7;
+  repeated string projection_targets = 8;
+  SuccessRubric success_rubric = 9;
+  repeated AnchorRef anchors = 10;
+  repeated Exemplar exemplars = 11;
+  LedgerClassification ledger_classification = 12;
+  NoneYetJustification none_yet_justification = 13;
+  string register = 14;
+}
+
+message IntakeCandidatePlaybookRequest {
+  CandidatePlaybook candidate = 1;
+  string target_owner = 2;          // REQUIRED — caller/Foundry-resolved owner-home/descriptor
+  string parent_id = 3;             // REQUIRED — active parent track id
+  string approver = 4;              // optional; empty defaults to "lore"
+  string actor_name = 5;            // REQUIRED — empty → actor_name_required
+  string actor_type = 6;            // REQUIRED — empty → actor_params_required
+  string actor_model = 7;           // REQUIRED — empty → actor_params_required
+  string actor_provider = 8;        // REQUIRED — empty → actor_params_required
+  int64 actor_context_window = 9;   // optional
+  string actor_sdk_version = 10;    // optional
+  string actor_entrypoint = 11;     // optional
+  string hearth_path = 12;          // engine hearth for begin/lock scope
+}
+
+message IntakeCandidatePlaybookResponse {
+  string instance_id = 1;           // begun playbook_generation instance id
+  string kind = 2;                  // always "playbook_generation"
+  string resolved_owner_home = 3;   // echoed target_owner; engine does not resolve owners
+  string playbook_name = 4;         // synthesized slug(candidate.intent)
+}
+
+message HealthCheckRequest {}
+
+message HealthCheckResponse {
+  string status = 1;
+  uint32 wire_proto_version = 2;
+  string build_version = 3;
+}
+
+// BeginAdoptionStatus RPC — pure read, no mutation.
+// Returns whether (actor_name, artifact_path, state) has an open begin-marker.
+// state is REQUIRED (matching the state-scoped key from D-C).
+// hearth_path mirrors other RPCs for multi-hearth resolution.
+message BeginAdoptionStatusRequest {
+  string hearth_path = 1;
+  string actor_name = 2;
+  string artifact_path = 3;
+  string state = 4;
+}
+
+message BeginAdoptionStatusResponse {
+  // true when (actor_name, artifact_path, state) has an open begin-marker
+  // with no subsequent closing transition by that actor for that state.
+  // false when never begun or after the closing transition.
+  bool has_open_begin = 1;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 2;
+}
+
+// PlaybookActivity RPC — pure read, no mutation.
+//
+// Backs the Foundry playbook-activity UI: which playbooks are registered and
+// how often each is called over time, grouped by the kit/author that owns the
+// playbook. The engine constructs a fresh playbook registry per call (mirror
+// route/describe always-reload), derives each playbook's owner from the
+// `contributed_by` field in its status.yaml ("anvil" when absent), and folds
+// the durable, redacted routing-activity sink into a per-kind call count.
+message PlaybookActivityRequest {
+  string hearth_path = 1; // per-call hearth resolution (mirror Route/Describe)
+  // When true, fold EVERY permitted hearth and merge: sum owner/playbook
+  // call_counts across hearths, merge owner groups by owner. resolved_hearth
+  // becomes the sentinel "(all hearths)"; hearths_included lists the folded
+  // hearths. When false/absent, behavior is exactly the single-hearth path
+  // (PURE APPEND — the old shape is unchanged). Mirrors UsageTimeSeries /
+  // PlaybookStepVolume all_hearths.
+  bool all_hearths = 2;
+}
+
+message PlaybookActivityResponse {
+  // One group per owner, ordered by owner name; entries ordered by kind.
+  repeated PlaybookOwnerGroup owners = 1;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  // The sentinel "(all hearths)" when all_hearths was requested.
+  string resolved_hearth = 2;
+  // The hearth paths folded into this response (single-element — the resolved
+  // hearth — in the single-hearth path; every folded hearth when all_hearths
+  // is true). PURE APPEND (new field tag 3).
+  repeated string hearths_included = 3;
+}
+
+// Playbooks contributed by a single kit/author.
+message PlaybookOwnerGroup {
+  string owner = 1; // contributed_by; "anvil" when absent
+  repeated PlaybookActivityEntry entries = 2;
+}
+
+// One registered playbook with its owner, description, and call count.
+message PlaybookActivityEntry {
+  string kind = 1;
+  string owner = 2;
+  string description = 3;
+  uint64 call_count = 4;
+}
+
+// UsageTimeSeries RPC — pure read, no mutation.
+//
+// Backs the dashboard's call-volume-over-time chart. Folds the SAME durable,
+// redacted routing-activity sink the PlaybookActivity RPC folds
+// (`routing-activity.jsonl`), but bucketed by the calendar day (or ISO week) of
+// each record's `at` instead of summed cumulatively. Same hearth resolution and
+// read posture as PlaybookActivity (standalone no-op, no new auth). An empty
+// sink yields an empty buckets list (not an error).
+message UsageTimeSeriesRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+  string granularity = 2;  // "day" | "week"; empty/unknown → "day" (default)
+  // When true, fold EVERY permitted hearth and merge (sum call counts, union
+  // distinct-actor sets). resolved_hearth becomes the sentinel "(all hearths)";
+  // hearths_included lists the folded hearth paths. When false/absent, behavior
+  // is exactly the single-hearth path (pure append; default is the old shape).
+  bool all_hearths = 3;
+}
+
+message UsageTimeSeriesResponse {
+  // Buckets ordered ascending by period_start.
+  repeated TimeBucket buckets = 1;
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  // The sentinel "(all hearths)" when all_hearths was requested.
+  string resolved_hearth = 2;
+  // The hearth paths that were folded into this response. Single-element (the
+  // resolved hearth) in the single-hearth path; every folded hearth when
+  // all_hearths is true.
+  repeated string hearths_included = 3;
+}
+
+// One time bucket: the period start, the period's total call count, and the
+// per-playbook breakdown.
+message TimeBucket {
+  string period_start = 1;  // ISO date (YYYY-MM-DD): the day, or the week's Monday
+  uint64 total_calls = 2;
+  // Per-playbook breakdown, ordered ascending by kind.
+  repeated ArtifactKindPeriodCount per_artifact_kind = 3;
+  // Count of DISTINCT salted actor_hash values among the step-measurement
+  // records whose `at` falls in this bucket (records with no actor_hash are
+  // excluded). Unioned across hearths when all_hearths is true.
+  uint64 distinct_actors = 4;
+  uint64 begin_count = 5;
+  uint64 complete_count = 6;
+}
+
+// One playbook's call count within a single time bucket.
+message ArtifactKindPeriodCount {
+  string kind = 1;
+  uint64 call_count = 2;
+}
+
+// PlaybookStepVolume RPC — pure read, no mutation.
+//
+// Backs the dashboard's per-step volume drill-down for one playbook. Folds the
+// durable, redacted step-measurement sink (`step-measurement.jsonl`), filtered
+// to records whose `kind` matches the request, grouped by (from_state,
+// to_state, role). Same hearth resolution and read posture as PlaybookActivity.
+// An unknown kind, or an empty sink, yields an empty steps list (not an error).
+message PlaybookStepVolumeRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+  string kind = 2;         // the playbook kind to drill into
+  // When true, fold EVERY permitted hearth and sum per-step counts.
+  // resolved_hearth becomes the sentinel "(all hearths)". (Pure append.)
+  bool all_hearths = 3;
+}
+
+message PlaybookStepVolumeResponse {
+  // The sentinel "(all hearths)" when all_hearths was requested.
+  string resolved_hearth = 1;
+  string kind = 2;  // echoed from the request
+  // Steps ordered by descending call_count, then ascending from_state.
+  repeated StepCount steps = 3;
+  // The hearth paths folded into this response (single-element in the
+  // single-hearth path; every folded hearth when all_hearths is true).
+  repeated string hearths_included = 4;
+}
+
+// One playbook step's call count, grouped by (from_state, to_state, role).
+message StepCount {
+  string from_state = 1;
+  string to_state = 2;
+  string role = 3;
+  uint64 call_count = 4;
+}
+
+// HookManifest RPC — pure read, no mutation.
+//
+// The harness-AGNOSTIC kit-hook DELIVERY contract a native-hook installer (and
+// Foundry) consumes to push native hooks into any agent harness. Returns the
+// resolved INSTALLABLE hook set for the resolved hearth, computed by folding
+// every registered playbook machine's `hooks_by_role` declarations with the kit
+// manifest's `hard_enforce` policy. The contract is DERIVED, never duplicated:
+// each hook's `body` is the SAME content `begin` serves for that (artifact_kind,
+// state, role) seam (read via the same hook-body path so it can never drift).
+// Same hearth resolution and read posture as PlaybookActivity (standalone no-op,
+// no new auth). A playbook with no hooks contributes nothing.
+message HookManifestRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+}
+
+message HookManifestResponse {
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 1;
+  // The open-begin-session gate query name, echoed from the manifest policy
+  // ("begin_adoption_status"). The installer queries this to decide whether a
+  // mutation may proceed.
+  string gate_query = 2;
+  // Resolved installable hooks, sorted by (artifact_kind, state, role).
+  repeated ResolvedHook hooks = 3;
+}
+
+// One installable hook in the delivery contract.
+message ResolvedHook {
+  string artifact_kind = 1;
+  string state = 2;
+  string role = 3;
+  // The actual hook markdown served for this (artifact_kind, state, role) — the
+  // SAME content `begin` would serve.
+  string body = 4;
+  // "hard" when artifact_kind is in the manifest's hard_enforce policy, else
+  // "soft".
+  string gate = 5;
+}
+
+// ActorActivity RPC — pure read, no mutation.
+//
+// LOCAL-ONLY, NEVER TELEMETRY. This is the local-dashboard counterpart to the
+// salted `distinct_actors` count UsageTimeSeries reports: it returns the RAW
+// actor NAMES folded from the `activity:` begin-markers each artifact's
+// status.yaml carries. It is served ONLY over the loopback /ws bridge and the
+// on-machine gRPC surface to the local dashboard. The raw actor names this
+// query returns MUST NOT be emitted to the Part-3 telemetry path — the salted
+// `actor_hash` in the step-measurement sink remains the only actor signal that
+// may leave the machine. This query reads begin-markers only; it never touches
+// the telemetry emitter or the step-measurement sink. Same hearth resolution
+// and read posture as PlaybookActivity (standalone no-op, no new auth).
+message ActorActivityRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+  // When true, fold EVERY permitted hearth and union per-actor (sum begin
+  // counts, union artifact_kinds). resolved_hearth becomes the sentinel
+  // "(all hearths)"; hearths_included lists the folded hearths.
+  bool all_hearths = 2;
+}
+
+message ActorActivityResponse {
+  // The canonical hearth path the engine actually operated on (the sentinel
+  // "(all hearths)" when all_hearths was requested).
+  string resolved_hearth = 1;
+  // The hearth paths folded into this response (single-element in the
+  // single-hearth path; every folded hearth when all_hearths is true).
+  repeated string hearths_included = 2;
+  // Per-actor activity, ordered by descending begin_count then ascending actor.
+  repeated ActorActivityEntry actors = 3;
+}
+
+// One actor's activity rolled up across every artifact's begin-markers. Carries
+// the RAW actor name — LOCAL-ONLY.
+message ActorActivityEntry {
+  string actor = 1;        // the RAW actor name (LOCAL-ONLY, never telemetry)
+  uint64 begin_count = 2;  // total begin-markers attributed to this actor
+  string last_active = 3;  // latest (ISO) begin-marker timestamp for this actor
+  // Distinct artifact kinds this actor has a begin-marker on, ordered ascending.
+  repeated string artifact_kinds = 4;
+}
+
+// ActivitySummary RPC — pure read, no mutation.
+//
+// Folds the durable, redacted UNIVERSAL activity-log sink (`activity-log.jsonl`),
+// which records ONE record per command turn the engine serves (begin/checkin/
+// complete/route/snapshot/amend/persist_playbook/intake_candidate_playbook/
+// describe/catalog). This is the measurement of what is ACTUALLY used end-to-end
+// — not just the routed slice the routing-activity sink records. Same hearth
+// resolution and read posture as PlaybookActivity (standalone no-op, no new
+// auth). The read/measurement queries themselves are NOT logged, so this fold
+// never reflects dashboard reads. An empty sink yields a zeroed summary.
+message ActivitySummaryRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+  string granularity = 2;  // "day" | "week"; empty/unknown → "day" (default)
+  // When true, fold EVERY permitted hearth and merge (sum turn counts, union
+  // distinct-actor sets). resolved_hearth becomes the sentinel "(all hearths)".
+  bool all_hearths = 3;
+}
+
+message ActivitySummaryResponse {
+  // The canonical hearth path the engine actually operated on (the sentinel
+  // "(all hearths)" when all_hearths was requested).
+  string resolved_hearth = 1;
+  // The hearth paths folded into this response (single-element in the
+  // single-hearth path; every folded hearth when all_hearths is true).
+  repeated string hearths_included = 2;
+  // Every recorded command turn across the folded hearths.
+  uint64 total_turns = 3;
+  // Turn count per command, descending by count then ascending by command.
+  repeated ActivityLabelCount by_command = 4;
+  // Route-resolution outcome count over route turns only, descending by count
+  // then ascending by outcome.
+  repeated ActivityLabelCount by_route_outcome = 5;
+  // Turn count per resolved artifact_kind (empty kinds excluded), descending by
+  // count then ascending by kind.
+  repeated ActivityLabelCount by_artifact_kind = 6;
+  // Time buckets ordered ascending by period_start.
+  repeated ActivityTimeBucket buckets = 7;
+  // Per-harness routed-turn count over route turns only, grouped by the route
+  // record's `source` (the originating harness id). Records with an empty
+  // source — old hooks/records — are bucketed under the "unknown" label.
+  // Descending by count then ascending by source. Additive: an older client
+  // that ignores this field is unaffected.
+  repeated ActivityLabelCount by_source = 8;
+  // Honest per-conversation adoption. routed_conversations = distinct
+  // conversations (by conversation_hash) that fired >=1 route turn (the
+  // denominator; routes dedup per conversation). converted_conversations =
+  // those routed conversations that also ENGAGED a playbook (a begin/snapshot/
+  // complete/amend turn). Conversion rate = converted / routed. Records with no
+  // conversation_hash are excluded. Additive — older clients ignore these.
+  uint64 routed_conversations = 9;
+  uint64 converted_conversations = 10;
+  // Layer-1 honest-adoption call-state count over route turns only
+  // ("no_playbook_run" | "start_opportunity" | "mid_playbook_run"); a route record
+  // lacking the field is bucketed under "unknown". Coverage = (began-from-START
+  // + mid_playbook_run) / total route turns; start-conversion denominator =
+  // start_opportunity only. Descending by count then ascending by call-state.
+  // Additive — older clients ignore this field.
+  repeated ActivityLabelCount by_call_state = 11;
+  // Total playbook-STEP turns (begin/snapshot/complete/amend) across the window
+  // — the VOLUME of playbook-driving activity (not a per-conversation flag).
+  // Additive — older clients ignore this field.
+  uint64 playbook_step_turns = 12;
+}
+
+// A label/count pair (command, route-outcome, or artifact_kind).
+message ActivityLabelCount {
+  string label = 1;
+  uint64 count = 2;
+}
+
+// One time bucket of the activity summary.
+message ActivityTimeBucket {
+  string period_start = 1;  // ISO date (YYYY-MM-DD): the day, or the week's Monday
+  uint64 total_turns = 2;
+  // Count of DISTINCT salted actor_hash values among the activity-log records
+  // whose `at` falls in this bucket (records with no actor_hash excluded).
+  uint64 distinct_actors = 3;
+}
+
+// PlaybookFidelity RPC — pure read, no mutation.
+//
+// Folds the SAME durable, redacted universal activity-log sink ActivitySummary
+// folds, into the Layer-3 FIDELITY measure: whether a begun playbook is driven
+// and closed properly. Purely derived from the existing per-transition fields
+// (from_state/to_state/actor_hash/at/artifact_kind/playbook_run_id) — no
+// new instrumentation. Same hearth resolution and read posture as
+// ActivitySummary (the read is itself NOT logged). An empty sink yields a zeroed
+// fidelity result. Additive — old clients are unaffected.
+message PlaybookFidelityRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror ActivitySummary)
+  // When true, fold EVERY permitted hearth and merge. resolved_hearth becomes
+  // the sentinel "(all hearths)".
+  bool all_hearths = 2;
+}
+
+message PlaybookFidelityResponse {
+  // The canonical hearth path operated on (the sentinel "(all hearths)" when
+  // all_hearths was requested).
+  string resolved_hearth = 1;
+  // The hearth paths folded into this response.
+  repeated string hearths_included = 2;
+  // Per-kind completion (begun, terminal-reaching, rate), ascending by kind.
+  repeated KindCompletion completion = 3;
+  // Total dangling instances (begun + transitioned but never terminal).
+  uint64 dangling_instances = 4;
+  // Per-kind dangling counts, descending by count then ascending by kind.
+  repeated ActivityLabelCount dangling_by_kind = 5;
+  // Per-kind revision-cycle counts (transitions into a *_revision state),
+  // descending by count then ascending by kind.
+  repeated ActivityLabelCount revision_cycles = 6;
+  // Total revision cycles across all kinds.
+  uint64 revision_cycles_total = 7;
+  // Review authenticity over paired review-gate exits: review_exits =
+  // delegated_exits + self_review_exits.
+  uint64 review_exits = 8;
+  uint64 delegated_exits = 9;
+  uint64 self_review_exits = 10;
+  // Elapsed-seconds samples between each paired review enter and exit.
+  repeated uint64 review_elapsed_seconds = 11;
+  // Per-instance folded fidelity rows, ascending by instance_id. Additive.
+  repeated PlaybookRunFidelity instances = 12;
+}
+
+// Per-kind completion row: of the begun instances of `kind`, how many reached a
+// terminal transition, and the resulting rate (terminal / begun).
+message KindCompletion {
+  string kind = 1;
+  uint64 begun = 2;
+  uint64 terminal = 3;
+  double completion_rate = 4;
+}
+
+// Per-instance fidelity row derived from the same fold as the aggregate
+// PlaybookFidelity fields.
+message PlaybookRunFidelity {
+  string instance_id = 1;
+  string kind = 2;
+  string folded_state = 3;
+  bool begun = 4;
+  uint64 transition_count = 5;
+  bool reached_terminal = 6;
+  bool dangling = 7;
+  uint64 revision_cycles = 8;
+}
+
+// PlaybookAtlas RPC — pure read, no mutation.
+//
+// Backs the in-app Atlas measurement surface. Folds every registry-resolved
+// playbook machine in the resolved hearth into a per-kind honest-measurement
+// summary: owner kit + lifecycle state (read per-dir from status.yaml), the
+// serialized `register` ("driven"|"free"), the SHARED `playbook_integrity` fold
+// (rubber-stamp gates, unmeasured states, anchors_count, grader_declared — the
+// SAME rules `hearth_lint` uses), a calibration badge ("seed"|"none"), and
+// state/edge COUNTS only. INVALID machines are INCLUDED as degenerate entries
+// (`loads == false`, carrying their load error) so the Atlas shows breakage
+// rather than hiding it. The full per-kind states/edges/rubric live on the
+// companion PlaybookAtlasDetail RPC (list/detail split keeps the payload small
+// even at ~29 machines). The concrete hearth registry is folded directly, so the
+// atlas reaches the invalid-artifact diagnostics + per-dir status.yaml (both
+// unreachable through the composite `&dyn` registry). Same hearth resolution and
+// read posture as PlaybookActivity (standalone no-op, no new auth).
+message PlaybookAtlasRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookActivity)
+}
+
+message PlaybookAtlasResponse {
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 1;
+  // One entry per registry-resolved kind PLUS one per invalid machine, sorted by
+  // the display key (kind for valid entries, artifact_id for invalid ones).
+  repeated AtlasEntry entries = 2;
+}
+
+// One Atlas sidebar row. A valid entry carries the folded integrity + register +
+// calibration + counts; an invalid entry sets `loads == false` and carries the
+// `error_code`/`error_message`, still slotted into its kit column via the per-dir
+// status.yaml read.
+message AtlasEntry {
+  // The machine `kind` for a valid entry; the on-disk artifact_id for an invalid
+  // entry (the loader never produced a kind for it).
+  string kind = 1;
+  // The on-disk playbook directory id (the dir under `playbooks/`).
+  string artifact_id = 2;
+  // Owning kit from the dir's status.yaml; "" when the file is absent or omits it
+  // (grouped under "(unassigned)" by the UI).
+  string owner_kit = 3;
+  // Lifecycle state from the dir's status.yaml; "" when absent/omitted.
+  string state = 4;
+  // The serialized `Register` enum: "driven" (default) or "free". "" for invalid.
+  string register = 5;
+  // false for an invalid (unloadable) machine; true otherwise. Mirrors
+  // integrity.loads for convenience.
+  bool loads = 6;
+  // The stable snake_case load-error code (invalid entries only; "" for valid).
+  string error_code = 7;
+  // The human-readable load-error message (invalid entries only; "" for valid).
+  string error_message = 8;
+  // The shared honest-integrity fold. For an invalid entry this is a degenerate
+  // all-empty summary with loads == false.
+  AtlasIntegrity integrity = 9;
+  // The calibration badge: "seed" (a success_rubric with >=1 dimension) or "none"
+  // (no rubric or empty dimensions). "calibrated"/"refused" are RESERVED wire
+  // values with no source yet — the fold never emits them. "" for invalid.
+  string calibration = 10;
+  // Number of declared states (valid entries; 0 for invalid).
+  uint32 state_count = 11;
+  // Number of declared transitions (valid entries; 0 for invalid).
+  uint32 edge_count = 12;
+}
+
+// The honest measurement-integrity summary — the SAME fold `hearth_lint` uses.
+// `grader_declared` is provenance ONLY (whether the rubric NAMES a grader); it is
+// never "registered" or "calibrated" (no grader registry exists).
+message AtlasIntegrity {
+  bool loads = 1;
+  repeated string rubber_stamp_gates = 2;
+  repeated string unmeasured_states = 3;
+  uint32 anchors_count = 4;
+  bool grader_declared = 5;
+}
+
+message PlaybookAtlasDetailRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror PlaybookAtlas)
+  string kind = 2;         // the playbook kind to drill into
+}
+
+message PlaybookAtlasDetailResponse {
+  // The canonical hearth path the engine actually operated on (spec Req 7, N1).
+  string resolved_hearth = 1;
+  string kind = 2;  // echoed from the request
+  // false when the kind is not a registry-resolved (valid) machine — states/edges
+  // empty and success_rubric absent.
+  bool found = 3;
+  // Declared states in machine order.
+  repeated AtlasState states = 4;
+  // Declared transitions in machine order.
+  repeated AtlasEdge edges = 5;
+  // The machine's success rubric, absent when the kind declares none.
+  AtlasRubric success_rubric = 6;
+  // Per-(from_state,to_state,role) MEAN quality_score (0..1) across every
+  // temper scorecard instance of this kind, folded from
+  // `<temper_home>/.temper/workflow-measurements/*/scorecard.json`. Empty when
+  // no temper scorecards exist for this kind (no error).
+  repeated AtlasStepQuality step_quality = 7;
+  // Mean of each matching instance's own scorecard `mean_quality` (0..1). 0.0
+  // when `measured_instance_count` is 0 — NOT a real zero score.
+  double overall_mean_quality = 8;
+  // Count of temper scorecard instances whose `track_id` matched this kind.
+  uint32 measured_instance_count = 9;
+  // The most-recent step measurements across matching instances (temper
+  // scorecard file mtime, descending), capped by the engine's recent-feed
+  // limit.
+  repeated AtlasRecentMeasurement recent_measurements = 10;
+  // The REAL, HARSH 0-10 anchored ARTIFACT-QUALITY mean — weighted across every
+  // `step_quality` row that carries an artifact-quality measurement (weighted
+  // by each row's `artifact_sample_count`). THIS is the number the Atlas shows
+  // as its headline/overall score; `overall_mean_quality` above (coherence, a
+  // generic §0-template grade, uniformly low) is SECONDARY/provenance only and
+  // must never be the number a user sees first. `0.0` when
+  // `artifact_measured_count` is 0 — an honest "not yet graded", never a
+  // fabricated score.
+  double overall_artifact_quality = 11;
+  // Count of artifact-quality observations folded into `overall_artifact_quality`.
+  // `0` means no step of this kind has been artifact-graded yet.
+  uint32 artifact_measured_count = 12;
+}
+
+// One declared step's folded quality across every matching temper scorecard
+// instance of a kind.
+message AtlasStepQuality {
+  string from_state = 1;
+  string to_state = 2;
+  string role = 3;
+  // Mean `quality_score` (0..1) across `sample_count` observations — temper's
+  // generic coherence-judge grade for this transition (uniformly low; grades
+  // the §0 template, not the real artifact). Kept for provenance.
+  double mean_quality = 4;
+  uint32 sample_count = 5;
+  // Mean `artifact_quality_0_10` (0..10) across `artifact_sample_count`
+  // observations, from temper's SEPARATE `artifact_quality.json` grader — a
+  // HARSH anchored score of the ACTUAL ARTIFACT the step produced. THIS is the
+  // meaningful score; prefer it over `mean_quality` whenever
+  // `artifact_sample_count > 0`. `0.0`/`0` when absent (no artifact-quality
+  // measurement yet for this step) — NOT a fabricated zero; callers gate on
+  // `artifact_sample_count`.
+  double artifact_quality = 6;
+  uint32 artifact_sample_count = 7;
+}
+
+// One flattened entry in the recent-measurements feed.
+message AtlasRecentMeasurement {
+  string instance_id = 1;
+  string to_state = 2;
+  string role = 3;
+  string actor = 4;
+  // Generic coherence quality_score (0..1) for THIS event — a §0-template
+  // grade, uniformly low. SECONDARY: render it labeled "coherence", never as
+  // the headline score for this row.
+  double quality_score = 5;
+  string model = 6;
+  // The CURRENT aggregate artifact-quality score (0..10) for this event's
+  // (to_state, role), joined from the kind's step_quality at query time. This
+  // is NOT a per-event score — artifact-quality is graded per-instance by a
+  // separate grader, not emitted alongside every coherence event — it is the
+  // best-known aggregate for this step, shown so the row's real (harsh) score
+  // is visible instead of only the misleading coherence number. `0.0` when
+  // `artifact_sample_count` is 0 (no artifact-quality measurement yet for this
+  // step) — not a fabricated zero.
+  double artifact_quality = 7;
+  uint32 artifact_sample_count = 8;
+}
+
+// One state in the per-kind detail flow. `has_measurement` is true when the state
+// declares any `measurement_by_role` spec; `has_hook` is true when it declares a
+// `hook` or any `hooks_by_role` entry.
+message AtlasState {
+  string name = 1;
+  bool is_review_gate = 2;
+  bool is_terminal = 3;
+  bool has_measurement = 4;
+  bool has_hook = 5;
+}
+
+// One transition in the per-kind detail flow. `required_satisfaction` is a
+// repeated string — empty means null (a non-review-gate edge).
+message AtlasEdge {
+  string from = 1;
+  string to = 2;
+  string required_role = 3;
+  repeated string required_satisfaction = 4;
+}
+
+// The per-kind success rubric summary.
+message AtlasRubric {
+  repeated AtlasRubricDimension dimensions = 1;
+  bool grader_declared = 2;
+  uint32 anchors_count = 3;
+  repeated string lagging_signals = 4;
+}
+
+// One weighted rubric dimension. `evidence_class` is the serialized
+// `EvidenceClass` ("artifact_of_consequence"|"verifiable_citation"|
+// "self_description").
+message AtlasRubricDimension {
+  string dimension = 1;
+  uint32 weight = 2;
+  string evidence_class = 3;
+}
+
+// LiveInstances RPC — pure read, no mutation.
+//
+// LOCAL-ONLY, NEVER TELEMETRY. Backs the in-app Atlas "live actors" overlay and
+// the homepage live panel: the OPEN (non-terminal) artifact instances in the
+// resolved hearth, each carrying its FOLDED current state and the RAW actor name
+// + timestamp joined from that instance's `activity:` begin-markers — the SAME
+// LOCAL-ONLY signal ActorActivity reads. The open set is the catalog
+// active-artifacts (already non-terminal via the hardcoded terminal-state
+// filter), further filtered by the registry-aware `state_is_terminal`
+// (belt-and-suspenders for machine-declared terminal states outside the hardcoded
+// list); each instance's current state is folded from its status.yaml +
+// transition events. This read touches begin-markers only — it NEVER reads the
+// salted `actor_hash` in the redacted activity-log (the dishonesty the Atlas
+// exists to expose) or the step-measurement sink; the salted `actor_hash`
+// remains the only actor signal that may leave the machine. Same hearth
+// resolution and read posture as ActorActivity (standalone no-op, no new auth).
+message LiveInstancesRequest {
+  string hearth_path = 1;  // per-call hearth resolution (mirror ActorActivity)
+  // When true, fold EVERY permitted hearth and concatenate the open instances.
+  // resolved_hearth becomes the sentinel "(all hearths)"; hearths_included lists
+  // the folded hearths. When false/absent, behavior is exactly the single-hearth
+  // path (pure append; default is the old shape).
+  bool all_hearths = 2;
+}
+
+message LiveInstancesResponse {
+  // The canonical hearth path the engine actually operated on (the sentinel
+  // "(all hearths)" when all_hearths was requested).
+  string resolved_hearth = 1;
+  // The hearth paths folded into this response (single-element in the
+  // single-hearth path; every folded hearth when all_hearths is true).
+  repeated string hearths_included = 2;
+  // ONLY the genuinely LIVE instances (see LiveInstance doc for the
+  // live/dormant rule), ordered ascending by instance_id. Merely-open
+  // (non-terminal but dormant) instances are EXCLUDED here — see idle_count.
+  repeated LiveInstance instances = 3;
+  // Count of OPEN (non-terminal) instances that did NOT qualify as live —
+  // e.g. a proposal sitting untouched in `active`, a track quietly
+  // `shelved`. An honest count, never silently dropped nor rendered as
+  // fake "live agents".
+  uint32 idle_count = 4;
+}
+
+// One LIVE instance. `actor`/`at` come from the LATEST `activity:` begin-marker
+// (the RAW actor name — LOCAL-ONLY, never the salted actor_hash); both empty when
+// the instance carries no begin-marker. An instance is LIVE when its most-recent
+// §0 event is within the engine's live window (e.g. 24h) OR it carries a raw
+// actor; otherwise it is DORMANT and excluded from `LiveInstancesResponse.instances`
+// (see `idle_count`).
+message LiveInstance {
+  string instance_id = 1;  // the artifact directory id
+  string kind = 2;         // the instance's specific playbook kind (status.yaml `kind`)
+  string state = 3;        // the FOLDED current state (status.yaml + transition events)
+  string actor = 4;        // RAW actor name from the latest begin-marker (LOCAL-ONLY)
+  string at = 5;           // the latest begin-marker's ISO timestamp; empty when none
+  // The last transition's to_state — the SAME value as `state`, surfaced under
+  // the clearer "current step" name for the UI.
+  string current_step = 6;
+  // Count of §0 StepMeasurementEvents recorded for this instance in the
+  // temper-consumed stream. 0 when temper has none (no temper home resolvable,
+  // no events file for the kind, or none carry this instance's workflow_id) —
+  // fail-open, never an error.
+  uint32 action_count = 7;
+  // The on-disk artifact directory (e.g. "<hearth>/tracks/<instance_id>"), so
+  // the UI can point at / open the real artifact. Empty if unresolvable.
+  string artifact_dir = 8;
+}
+
+// ListInstanceArtifacts RPC — pure read, no mutation, LOCAL-ONLY.
+//
+// Lets the Atlas live panel explore a live instance's on-disk artifacts
+// (spec.md, plan.md, reflection.md, *.review.md, status.yaml, etc.) read-only
+// from its track directory (the SAME `LiveInstance.artifact_dir` value).
+// Non-recursive — track/proposal/milestone/decision directories are flat — so
+// one `read_dir` is enough. Each file's first ~500 chars are returned as a
+// preview so the UI can show real in-progress work without a second round
+// trip per file.
+//
+// FAIL-CLOSED on path escape: `instance_dir` must canonicalize under one of
+// the engine's permitted hearth roots (the SAME `HearthPolicy` every other
+// query enforces) or the request is refused (PermissionDenied) — a client
+// cannot use this RPC to read arbitrary filesystem paths. FAIL-OPEN on
+// ordinary read trouble: a permitted-but-unreadable directory yields an empty
+// `artifacts` list and a non-empty `error_message`, never a hard error.
+message ListInstanceArtifactsRequest {
+  // The on-disk artifact directory — the SAME value `LiveInstance.artifact_dir`
+  // carries.
+  string instance_dir = 1;
+}
+
+message ListInstanceArtifactsResponse {
+  // The canonicalized directory the engine actually read.
+  string instance_dir = 1;
+  repeated InstanceArtifact artifacts = 2;
+  // Non-empty when the directory could not be read (missing, permission
+  // denied, etc.) — `artifacts` is empty in that case, never a fabricated
+  // list. Empty string on success.
+  string error_message = 3;
+}
+
+// One file in an instance's artifact directory.
+message InstanceArtifact {
+  string name = 1;  // file name, e.g. "spec.md"
+  uint64 size_bytes = 2;
+  // First ~500 chars of the file's content (UTF-8, lossy). Empty for a file
+  // that could not be read as text (binary, permission) — not an error.
+  string preview = 3;
+  // RFC 3339 modified timestamp; "" when unavailable.
+  string modified_at = 4;
+}
+
+// ReadInstanceArtifact RPC — pure read, no mutation, LOCAL-ONLY.
+//
+// Companion to `ListInstanceArtifacts`: that RPC lists a live instance's
+// files with a ~500-char preview each; this RPC reads ONE named file's FULL
+// content so the Atlas live-agent artifact explorer can render the real
+// in-progress work (not just a preview snippet), and can be polled to show
+// the file updating live as the agent writes it.
+//
+// Capped at 2 MiB (`MAX_ARTIFACT_READ_BYTES`) — `truncated=true` and only the
+// first 2 MiB are returned for anything larger; `size_bytes` always reports
+// the file's REAL on-disk size regardless of truncation.
+//
+// FAIL-CLOSED on path escape: `instance_dir` is validated with the SAME
+// `HearthPolicy` permitted-root guard `ListInstanceArtifacts` uses, and `name`
+// must be a single flat path component naming a file directly inside
+// `instance_dir` — no `..`, no path separators, no absolute path. Either
+// violation is refused (PermissionDenied), never resolved. FAIL-OPEN on
+// ordinary read trouble (missing file, unreadable, non-UTF-8): the response
+// carries empty `content` and a non-empty `error_message`, never a hard
+// error.
+message ReadInstanceArtifactRequest {
+  // The on-disk artifact directory — the SAME value `LiveInstance.artifact_dir`
+  // / `ListInstanceArtifactsResponse.instance_dir` carries.
+  string instance_dir = 1;
+  // The file name to read, e.g. "spec.md" — must name a file directly inside
+  // `instance_dir` (see FAIL-CLOSED note above).
+  string name = 2;
+}
+
+message ReadInstanceArtifactResponse {
+  string name = 1;
+  // The file's full content (UTF-8, lossy), capped at 2 MiB. Empty when the
+  // file could not be read (see `error_message`).
+  string content = 2;
+  // The file's REAL on-disk size, even when `content` was truncated.
+  uint64 size_bytes = 3;
+  // RFC 3339 modified timestamp; "" when unavailable.
+  string modified_at = 4;
+  // True when `content` was capped short of the file's full size.
+  bool truncated = 5;
+  // Non-empty when the file could not be read (missing, permission,
+  // non-UTF-8, etc.) — `content` is empty in that case, never fabricated.
+  // Empty string on success.
+  string error_message = 6;
+}
+
+// ---------------------------------------------------------------------------
+// K8 backlog_item wire schema (plan Task 9).
+//
+// Strings carry closed snake-case tokens and are domain-validated. Empty means
+// absent only where stated; messages and oneofs carry semantic presence. There
+// are no generic maps or JSON bodies and no caller-controlled state, audit
+// stamp, history sequence, timestamp, or rank position except a DECIDE
+// proposal.
+// ---------------------------------------------------------------------------
+
+message BacklogEvidenceRef {
+  string kind = 1;
+  string id = 2;
+}
+// Presence-only: encodes null / clear / cross-organ without a selected-false
+// state.
+message BacklogPresence {}
+message BacklogValueGapMagnitude {
+  BacklogEvidenceRef reference = 1;
+  double magnitude = 2;
+}
+message BacklogDependencyReadiness {
+  string status = 1;
+  repeated BacklogEvidenceRef blocker_refs = 2;
+}
+message BacklogWakeCondition {
+  string kind = 1;
+  BacklogEvidenceRef reference = 2;
+  string predicate = 3;
+}
+message BacklogPlaybookBinding {
+  oneof definition {
+    string playbook_definition_id = 1;
+    BacklogPresence no_playbook_definition = 2;
+  }
+  bool route_to_intake = 3;
+}
+message BacklogRankInputsEdit {
+  oneof value_gap_magnitude_edit {
+    BacklogValueGapMagnitude set_value_gap_magnitude = 1;
+    BacklogPresence clear_value_gap_magnitude = 2;
+  }
+  oneof nick_weight_edit {
+    double set_nick_weight = 3;
+    BacklogPresence clear_nick_weight = 4;
+  }
+  oneof dependency_readiness_edit {
+    BacklogDependencyReadiness set_dependency_readiness = 5;
+    BacklogPresence clear_dependency_readiness = 6;
+  }
+}
+message BacklogShapeEdit {
+  string backlog_item_id = 1;
+  oneof action_class_edit { string set_action_class = 10; }
+  oneof description_edit {
+    string set_description = 11;
+    BacklogPresence clear_description = 12;
+  }
+  oneof effort_class_edit {
+    string set_effort_class = 13;
+    BacklogPresence clear_effort_class = 14;
+  }
+  oneof playbook_binding_edit {
+    BacklogPlaybookBinding set_playbook_binding = 15;
+    BacklogPresence clear_playbook_binding = 16;
+  }
+  BacklogRankInputsEdit rank_inputs = 17;
+  oneof wake_condition_edit {
+    BacklogWakeCondition set_wake_condition = 18;
+    BacklogPresence clear_wake_condition = 19;
+  }
+  oneof superseded_by_edit {
+    string set_superseded_by = 20;
+    BacklogPresence clear_superseded_by = 21;
+  }
+}
+message BacklogRecomputeRank { string business_node_id = 1; }
+message BacklogExecutionBinding {
+  string track_id = 1;
+  string playbook_definition_id = 2;
+  string playbook_run_id = 3;
+  string run_id = 4;
+}
+message BacklogOutcomeBindingDecl {
+  oneof success_measure {
+    string success_measure_id = 1;
+    BacklogPresence no_success_measure_id = 2;
+  }
+  string tree_node = 3;
+  string reading_status = 4;
+}
+message BacklogStampExecutionBinding {
+  string backlog_item_id = 1;
+  BacklogExecutionBinding execution_binding = 2;
+  BacklogOutcomeBindingDecl outcome_binding = 3;
+}
+message BacklogRecordOutcomeSignoff {
+  string backlog_item_id = 1;
+  string approver = 2;
+}
+message BacklogProposedPosition {
+  string backlog_item_id = 1;
+  uint32 position = 2;
+}
+message BacklogProposeReshuffle {
+  repeated BacklogProposedPosition proposed = 1;
+}
+message BacklogCommitReshuffle {
+  string proposal_id = 1;
+  string approver = 2;
+}
+message BacklogRejectReshuffle {
+  string proposal_id = 1;
+  string approver = 2;
+}
+message BacklogVetoAgeOut {
+  string backlog_item_id = 1;
+  string approver = 2;
+}
+message BacklogLiftAgeOutVeto {
+  string backlog_item_id = 1;
+  string approver = 2;
+}
+message BacklogMutateRequest {
+  string hearth_path = 1;
+  string actor_name = 2;
+  string actor_role = 3;
+  string actor_type = 4;
+  string actor_model = 5;
+  string actor_provider = 6;
+  int64 actor_context_window = 7;
+  string actor_sdk_version = 8;
+  string actor_entrypoint = 9;
+  oneof operation {
+    BacklogShapeEdit shape_edit = 20;
+    BacklogRecomputeRank recompute_rank = 21;
+    BacklogStampExecutionBinding stamp_execution_binding = 22;
+    BacklogRecordOutcomeSignoff record_outcome_signoff = 23;
+    BacklogProposeReshuffle propose_reshuffle = 24;
+    BacklogCommitReshuffle commit_reshuffle = 25;
+    BacklogRejectReshuffle reject_reshuffle = 26;
+    BacklogVetoAgeOut veto_age_out = 27;
+    BacklogLiftAgeOutVeto lift_age_out_veto = 28;
+  }
+}
+message BacklogMutateResponse {
+  bool success = 1;
+  string operation = 2;
+  repeated string affected_item_ids = 3;
+  string proposal_id = 4;
+  string resolved_hearth = 5;
+  repeated string unranked_item_ids = 6;
+}
+message BacklogEvaluateRequest {
+  string hearth_path = 1;
+  string business_node_id = 2;
+  string actor_name = 3;
+  string actor_type = 4;
+  string actor_model = 5;
+  string actor_provider = 6;
+  int64 actor_context_window = 7;
+  string actor_sdk_version = 8;
+  string actor_entrypoint = 9;
+}
+message BacklogEvaluateResponse {
+  bool success = 1;
+  repeated string recomputed_item_ids = 2;
+  repeated string woken_item_ids = 3;
+  repeated string aged_out_item_ids = 4;
+  repeated string vetoed_item_ids = 5;
+  string resolved_hearth = 6;
+  repeated string unranked_item_ids = 7;
+}
+message BacklogQueueRequest {
+  string hearth_path = 1;
+  oneof scope {
+    string business_node_id = 2;
+    BacklogPresence cross_organ = 3;
+  }
+}
+message BacklogQueueItem {
+  string backlog_item_id = 1;
+  string business_node_id = 2;
+  string state = 3;
+  uint32 position = 4;
+  string title = 5;
+  string explanation = 6;
+  bool route_to_intake = 7;
+}
+message BacklogUnrankedQueueItem {
+  string backlog_item_id = 1;
+  string business_node_id = 2;
+  string state = 3;
+  string title = 4;
+  bool route_to_intake = 5;
+  string reason = 6;
+}
+message BacklogQueueResponse {
+  repeated BacklogQueueItem items = 1;
+  string resolved_hearth = 2;
+  repeated BacklogUnrankedQueueItem unranked_items = 3;
+}
+
+// ---------------------------------------------------------------------------
+// RunDetail RPC — pure read, no mutation, LOCAL-ONLY.
+//
+// One run's own record: the steps it has taken, the actors who took them, and
+// the runs that were started from inside it. The Playbooks depth panel needs
+// exactly this and must not derive it: two surfaces each folding a run's
+// history is how two surfaces come to disagree about what happened. The gRPC
+// RPC and the `/ws` `run_detail` JSON-RPC method fold the SAME
+// `compute_run_detail`.
+//
+// The steps come from the authoritative per-file transition event store under
+// `<artifact_dir>/transitions/`, merged with the legacy `status.yaml`
+// `transitions:` array by the one transition-log seam. The actors come from
+// that artifact's `actors:` table.
+//
+// THERE IS NO COST FIGURE IN ANVIL, SO THIS RESPONSE CARRIES NONE. Nothing in
+// this engine records what a step cost — no spend, no token count, no price,
+// no autonomy rung, on any artifact or any event. A `cost` field here could
+// only ever carry a fabricated zero, which reads to a person as a step that
+// was free. Its absence is the contract, not an omission.
+//
+// CORRECTED 2026-08-14, AND THE REFUSAL STANDS. The sentence above claims more
+// than is true and the overclaim was load-bearing: a per-run `total_cost_usd`
+// and `total_tokens` DO reach this engine, parsed from temper's per-instance
+// scorecards in `anvil-engine/src/scorecard_reader.rs`, and both are
+// `#[serde(default)]` — so a scorecard missing the key already yields a
+// fabricated `0.0` inside this process. They are dropped before any summary and
+// they have never reached a wire response, which is why this response carries
+// none and will keep carrying none. What is NOT true is "nothing in this engine
+// records what a step cost". A reader who took the broader sentence for a fact
+// would conclude a cost figure has to be invented from nothing; it does not, it
+// has to be TRUSTED, which is a different and harder question.
+//
+// The autonomy ladder needs a cost per run. Whether to show one is the owner's
+// decision, and what it turns on is stated in the track spec
+// `20260814T1815_autonomy_evidence_measurement_substrate`: a figure this engine
+// receives from a caller is that caller's claim, not this engine's measurement,
+// and the `serde(default)` zero is the fabricated zero this comment names,
+// already in the tree.
+//
+// FAIL-CLOSED on path escape: the hearth resolves through the SAME
+// `HearthPolicy` every other query enforces, and the located artifact
+// directory is re-checked against it (a symlinked artifact directory pointing
+// out of the hearth is refused, PermissionDenied). The caller supplies an
+// instance id, NEVER a path. FAIL-OPEN on ordinary read trouble: an
+// unreadable hearth yields `found=false` with an honest `error_message`, and
+// an unreadable/unparseable CHILD artifact is skipped rather than sinking the
+// whole read.
+message RunDetailRequest {
+  string hearth_path = 1;   // per-call hearth resolution (mirror LiveInstances)
+  // The run's artifact directory id — the SAME value `LiveInstance.instance_id`
+  // carries. Resolved by scanning the hearth's per-kind directories; never
+  // interpreted as a path.
+  string instance_id = 2;
+}
+
+message RunDetailResponse {
+  // The canonical hearth path the engine actually read.
+  string resolved_hearth = 1;
+  // False when no artifact directory in the hearth carries that id. That is an
+  // ANSWER, not a failure: `nodes` is empty and `error_message` stays empty.
+  bool found = 2;
+  // nodes[0] is the run that was asked for (depth 0). Every node after it is a
+  // run started from inside it (depth 1), ordered by its first step's `at`
+  // ascending, ties broken by instance_id.
+  repeated RunNode nodes = 3;
+  // Non-empty ONLY on a soft read failure (the hearth could not be listed) —
+  // `nodes` is empty in that case, never a fabricated list. Empty on success
+  // AND on a clean not-found.
+  string error_message = 4;
+}
+
+// One run in the record.
+message RunNode {
+  string instance_id = 1;
+  string kind = 2;   // the artifact's `kind` from status.yaml
+  string state = 3;  // the FOLDED current state (status.yaml + transition events)
+  string artifact_dir = 4;
+  // The run this one was started from inside. EMPTY for the run that was asked
+  // for — it is the root of this record and is nested under nothing.
+  string parent_instance_id = 5;
+  // 0 for the run that was asked for, 1 for a run started from inside it.
+  uint32 depth = 6;
+  repeated RunStep steps = 7;
+  repeated RunActor actors = 8;
+}
+
+// One step a run took. EMPTY means the record does not carry the field — a
+// step nobody had to approve names nobody. NEVER a placeholder value: "n/a" or
+// "system" in the approver slot is a claim about who signed off.
+message RunStep {
+  string to_state = 1;
+  string at = 2;
+  string actor = 3;
+  string role = 4;
+  string approver = 5;
+  string note = 6;
+  // The reviewer verdict recorded on this step, EMPTY when nobody reviewed it.
+  // "What it got wrong, and who caught it" needs the verdict and the actor on
+  // the same row; the event store has carried both since the carry-forward
+  // slice and the fold dropped the verdict, so every catch was invisible to
+  // every reader of this record. Empty is the ordinary case and is a surface's
+  // cue to render nothing — it is never "none" or "satisfied".
+  string verdict = 7;
+}
+
+// One actor from the run's `actors:` table. `model`/`provider` come from that
+// actor's MOST RECENT `configurations` entry, and are EMPTY when the table
+// carries none (a human, or an unconfigured agent) — never fabricated.
+message RunActor {
+  string name = 1;
+  string actor_type = 2;
+  string model = 3;
+  string provider = 4;
+}
+
+// JoinCoverage RPC — pure read, no mutation, and no write of any kind
+// (including no persisted salt: this path resolves the key epoch with the
+// NON-generating peek, never `resolve_salt`).
+//
+// Folds the delivery-log and activity-log sinks of the requested hearths into
+// the conversation-scoped join: which delivered guidance kind was followed by a
+// begin of that kind in the same conversation and the same hearth. The matching
+// arithmetic lives in one place (`anvil_core::domain::join_episode`); this RPC
+// is its wire seam.
+message JoinCoverageRequest {
+  // Scalar spelling. Combined with `hearth_paths` as a UNION, never mutually
+  // exclusive. Empty resolves the engine default exactly as every other read
+  // RPC does.
+  string hearth_path = 1;
+  // List spelling. An EMPTY entry names no hearth and is SKIPPED — the empty
+  // string is the default sentinel of the scalar field only, and defaulting it
+  // here would fold a hearth nobody asked for into a per-hearth report.
+  repeated string hearth_paths = 2;
+  // RFC3339 bounds, start inclusive / end exclusive; empty means unbounded.
+  string window_start = 3;
+  string window_end = 4;
+  // Filters on the EPISODE's project_label. Empty means no filter. Filtering
+  // narrows what is counted and changes nothing about where it is reported.
+  string project_label = 5;
+}
+
+// Per hearth, never pooled. There is no fleet-total field and none may be
+// added: the two hearths were measured at materially different begin-side
+// coverage, so a pooled number would be dominated by whichever is better
+// instrumented. There is also no path field — a report that names a hearth by
+// its filesystem location is a leak, which is what `hearth_label` exists for.
+message JoinCoverageResponse {
+  repeated HearthJoinCoverageReport per_hearth = 1;
+  // The `JOIN_FILTER_VERSION` constant, never a re-typed literal.
+  string filter_version = 2;
+}
+
+message HearthJoinCoverageReport {
+  // Basename of the hearth root, disambiguated to `<basename>#<ordinal>` when
+  // two members of one request share it. Never a path.
+  string hearth_label = 1;
+  string window_start = 2;
+  string window_end = 3;
+  uint64 delivery_rows_read = 4;
+  // Lines that did not parse. Counted, never skipped: a reader that drops what
+  // it cannot parse improves its own coverage number by shrinking its
+  // denominator.
+  uint64 read_defects = 5;
+  uint64 activity_rows_scanned = 6;
+  uint64 activity_rows_retained = 7;
+  uint64 begin_rows_read = 8;
+  // Delivery rows in the window carrying a NON-EMPTY guidance_kind.
+  uint64 episode_denominator = 9;
+  uint64 begin_denominator = 10;
+  // Excluded from the episode denominator and reported beside it.
+  uint64 menu_delivered = 11;
+  uint64 nothing_delivered = 12;
+  uint64 no_engine_answer = 13;
+  uint64 joined = 14;
+  JoinUnjoinCounts unjoin = 15;
+  JoinBeginUnjoinCounts begin_unjoin = 16;
+  JoinTerminalCounts terminal = 17;
+  // The fingerprint of the ONE deployment salt — identical on every entry of a
+  // single response — or `unknown_key_epoch`. Never the salt itself.
+  string key_epoch = 18;
+  // The fingerprint of THIS hearth's own `.telemetry-salt`, empty when it holds
+  // none. Also never the salt itself.
+  string hearth_salt_file_epoch = 19;
+  // One of NoEffectiveSalt | NoLocalEvidence | MatchesEffective |
+  // DiffersFromEffective. Four states and never a boolean: "this hearth holds
+  // no salt file" is not "no conflict".
+  string key_epoch_reconciliation = 20;
+}
+
+// Causes, not one bucket: two deliveries against one begin is a different fact
+// from a delivery nobody acted on.
+message JoinUnjoinCounts {
+  uint64 no_conversation_key = 1;
+  uint64 pre_migration_row = 2;
+  uint64 conversation_absent_from_begin_side = 3;
+  uint64 no_begin_of_kind_in_conversation = 4;
+  uint64 superseded_by_later_delivery_of_kind = 5;
+}
+
+message JoinBeginUnjoinCounts {
+  uint64 no_conversation_key = 1;
+  uint64 conversation_absent_from_delivery_side = 2;
+  uint64 no_prior_delivery_of_kind = 3;
+  uint64 no_unconsumed_prior_delivery_of_kind = 4;
+}
+
+message JoinTerminalCounts {
+  uint64 not_joined = 1;
+  uint64 not_yet_terminal = 2;
+  uint64 reached_terminal = 3;
+  uint64 unknown_run_state = 4;
+}

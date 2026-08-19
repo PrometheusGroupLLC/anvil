@@ -1,0 +1,195 @@
+kind: decision
+register: free
+route:
+  triggers: []
+directory: decisions
+registry: decisions.md
+parent_kind: ~
+description: "Institutional knowledge: question, answer, rationale, and validity conditions."
+required_fields:
+  - name: name
+    field_type: string
+    description: Decision title
+roles:
+  - doer
+  - decide
+  - reviewer
+  - amend
+states:
+  - name: tension
+    role_filters: [doer_actionable]
+    registry_section: tension
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: create.md
+  - name: tension_review
+    role_filters: [review_pending]
+    registry_section: tension
+    projection_targets: [decisions.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: decision-tension.md
+  - name: tension_revision
+    role_filters: [doer_actionable]
+    registry_section: tension
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: revise.md
+  - name: investigating
+    role_filters: [doer_actionable]
+    registry_section: investigating
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: investigate.md
+  - name: decided
+    role_filters: [doer_actionable]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: resolve.md
+  - name: decision_review
+    role_filters: [review_pending]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: decision-resolved.md
+  - name: decision_revision
+    role_filters: [doer_actionable]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: revise.md
+  - name: amend
+    role_filters: [doer_actionable]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: amend.md
+  - name: amend_review
+    role_filters: [review_pending]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: true
+    is_terminal: false
+    hooks_by_role:
+      reviewer: amend-review.md
+  - name: amend_revision
+    role_filters: [doer_actionable]
+    registry_section: decided
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: false
+    hooks_by_role:
+      doer: revise.md
+  - name: retired
+    role_filters: [terminal]
+    registry_section: retired
+    projection_targets: [decisions.md]
+    is_review_gate: false
+    is_terminal: true
+    hooks_by_role:
+      doer: retire.md
+transitions:
+  - from_state: tension
+    to_state: tension_review
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: tension
+    to_state: investigating
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: tension
+    to_state: decided
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: tension_review
+    to_state: tension_revision
+    required_role: decide
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: tension_review
+    to_state: tension
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: tension_revision
+    to_state: tension_review
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: investigating
+    to_state: decided
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: decided
+    to_state: decision_review
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: decided
+    to_state: amend
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: decided
+    to_state: retired
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: decision_review
+    to_state: decision_revision
+    required_role: decide
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: decision_review
+    to_state: decided
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: decision_revision
+    to_state: decision_review
+    required_role: decide
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: amend
+    to_state: amend_review
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+  - from_state: amend_review
+    to_state: amend_revision
+    required_role: amend
+    required_satisfaction: [needs_revision]
+    requires_approver: false
+  - from_state: amend_review
+    to_state: decided
+    required_role: reviewer
+    required_satisfaction: [satisfied]
+    requires_approver: true
+  - from_state: amend_revision
+    to_state: amend_review
+    required_role: amend
+    required_satisfaction: ~
+    requires_approver: false
+outcome_predicate:
+  terminal_state: decided
+  check: the decision reached decided carrying a recorded answer, rationale, and validity conditions — the tension was resolved into institutional knowledge (decided is reachable directly from tension or investigating, so decision_review being satisfied is NOT implied by this state and is not claimed here)

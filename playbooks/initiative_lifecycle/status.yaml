@@ -1,0 +1,13 @@
+# Canonical playbook lifecycle envelope for the kit's own governed definition.
+#
+# `kind` is the PLAYBOOK kind (this file describes the definition artifact's
+# own lifecycle), NOT the governed kind the machine defines — that stays
+# `machine.yaml`'s `kind: initiative` and is what the manifest declares as
+# `anvil_kind`. `state: active` records that the definition is AVAILABLE.
+#
+# No owner/access/provenance is carried here: this is package source, and the
+# registrar stamps `contributed_by`/`owner_kit`/`visibility`/`org` at install
+# time. Nothing was dropped — there was nothing to preserve.
+version: 1
+kind: playbook
+state: active

@@ -1,0 +1,14 @@
+/target
+/dist
+
+# CI pipeline params files (contain inline secrets — never commit)
+ci/pipelines/*.params.yml
+
+.claude/worktrees/
+
+# Per-deployment telemetry salt (generated; never commit a salt)
+.telemetry-salt
+__pycache__/
+
+# vitest failure screenshots — local run artifacts, never committed
+kit/app/frontend/.vitest-attachments/
