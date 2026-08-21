@@ -82,7 +82,7 @@ message ActiveArtifact {
   string summary = 4;
   // The action an agent in the current session role would take on this
   // artifact. "engine" if begin(identifier) supports it; otherwise
-  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  // "none" if no action exists for this role on this subject.
   string execution_route = 5;
 }
 
@@ -91,7 +91,7 @@ message AvailableArtifactType {
   string description = 2;
   string requires_parent = 3;  // empty string if no parent required
   // "engine" if begin(type, ...) creates this kind today; otherwise
-  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  // "none" if no action exists for this role on this subject.
   string execution_route = 4;
 }
 
@@ -175,7 +175,7 @@ message ActionInfo {
   string action = 1;
   string required_role = 2;
   // "engine" if this action is executed by begin(identifier); otherwise
-  // "fallback:<skill-name>" naming the forge skill to invoke instead.
+  // "none" if no action exists for this role on this subject.
   string execution_route = 3;
 }
 

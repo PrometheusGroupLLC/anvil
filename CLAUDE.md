@@ -1,39 +1,82 @@
 # Anvil
 
-> **Note for readers of the public mirror.**
-> This file is the working brief used inside the *private* development
-> repository, and it is reproduced here unedited so you can see the rules the
-> code is actually held to. It therefore refers to things that are **not
-> present in this repository**: the `forge/` hearth symlink, the `.hearth` and
-> `.mcp.json` config files, the `kit/` packaging tree, the `.claude/commands/`
-> prompt files, and the sibling `brine` and `anvil-hearth` repositories.
->
-> Those are excluded from the public mirror deliberately — see
-> [CONTRIBUTING.md](CONTRIBUTING.md). **The build and test commands below will
-> not work here**, because the workspace depends on private sibling
-> repositories that have not been published. Treat this file as a statement of
-> the project's standards, not as setup instructions you can follow.
-
-The forge playbook engine. Read `AGENTS.md` for the development workflow.
+The playbook engine. Read `AGENTS.md` for the development workflow. Read `forge/projections/` for current project state.
 
 ## Build and test
 
+**The behavioural suites live in a SECOND workspace, `brine-tests/`.** Read
+"Two workspaces" below before running tests — the commands changed.
+
 ```bash
-# Build all crates
+# Build all crates. Needs NO private siblings: the default workspace contains
+# only the product crates.
 cargo build
+
+# ── Behavioural suites — run from `brine-tests/`, NOT the repo root ──────────
+cd brine-tests
 
 # Run every feature across all three crates
 cargo test --workspace
 
-# Run features for a single crate (useful while iterating)
-cargo test --test brine_runner -p anvil-core
-cargo test --test brine_runner -p anvil-engine
-cargo test --test brine_runner -p anvil-mcp
+# Run features for a single crate (useful while iterating).
+# NOTE the `-steps` suffix: the runner now lives in the step crate, while the
+# features it drives still live beside the product crate it tests.
+cargo test --test brine_runner -p anvil-core-steps
+cargo test --test brine_runner -p anvil-engine-steps
+cargo test --test brine_runner -p anvil-mcp-steps
 
 # Run features through the brine CLI (requires brine's built-in rust adapter
 # on the PATH brine searches — see one-time setup below)
 brine run .
 ```
+
+The old commands — `cargo test --test brine_runner -p anvil-core` and its
+siblings, run from the repo root — **no longer exist**. The product crates have
+no `brine_runner` test target any more.
+
+### Two workspaces
+
+`cargo` loads the manifest of every path dependency reachable from a workspace
+member — dev-dependencies included, and switched-off optional dependencies
+included. While the brine-dependent step crates were members of the default
+workspace, `cargo metadata --no-deps` exited **101** for anyone without the
+private `brine` sibling: anvil's workspace could not even be enumerated, let
+alone built.
+
+So there are **three** workspace roots. Each one that needs a private sibling is
+a separate workspace *for that reason and no other*:
+
+| workspace | members | needs private siblings? |
+| --- | --- | --- |
+| `Cargo.toml` (default) | `anvil-core`, `anvil-core-hearth`, `anvil-engine`, `anvil-mcp` | no |
+| `brine-tests/Cargo.toml` | `anvil-test-support`, `anvil-core-steps`, `anvil-engine-steps`, `anvil-mcp-steps` | yes — `brine` |
+| `kit-build/Cargo.toml` | `anvil-kit-engine` | yes — `foundry` |
+
+`cargo build`, `cargo check` and `cargo metadata` at the repo root never load
+brine *or* foundry. Everything under `brine-tests/` and `kit-build/` does, and
+both are excluded from public exports.
+
+**`kit-build/` builds the engine binary the kit ships.** It is `anvil-engine`
+plus the Foundry session verifier: it depends on `foundry-kit-broker-client`
+(private, path) and compiles `anvil-engine/src/main.rs` as its own bin target.
+The verifier cannot live in `anvil-engine` — an optional, switched-off path
+dependency is still manifest-loaded — and it must not be inlined, because
+`anvil-core/src/ports/session_verifier.rs` records that anvil contains no inline
+JWT parsing, claim checking, or signature logic. So `anvil-engine` holds only the
+seam (`DynSessionVerifier` / `EngineVerifier::External`) and `kit-build` injects
+the implementation.
+
+Consequence worth knowing before you touch auth: **`scripts/build-kit.sh` is the
+only thing that compiles the production verifier arm.** A root `cargo build`, and
+every Brine suite, build it dead. That is why the build script gates on the
+verifier's symbols being present in the assembled binary.
+
+**Adding a fourth workspace root?** Add its `target/` to `.gitignore` in the same
+commit. `/target` is anchored to the repo root and covers exactly one workspace;
+this has already been missed twice.
+
+Feature files stay with the PRODUCT crate (`anvil-core/features/**`); only the
+runners moved.
 
 ### Brine adapter setup (one-time)
 
@@ -62,7 +105,7 @@ Anvil requires sibling repositories:
 workspace/
   anvil/              # this repo
   anvil-hearth/       # development memory (forge/ symlinks here)
-  brine/              # first consumer (symlinks AGENTS.md and .claude/commands/forge/ from here)
+  brine/              # first consumer (symlinks AGENTS.md from here)
   brine-hearth/       # brine's development memory
 ```
 
@@ -70,24 +113,26 @@ If `forge/` is a broken symlink, clone `anvil-hearth` as a sibling directory.
 
 ## Repository contents
 
-- `Cargo.toml` — workspace root with four members
+- `Cargo.toml` — the DEFAULT workspace root: four product crates, no private
+  siblings required. Also holds the temporary `[patch.crates-io]` that resolves
+  the two Foundry contract crates until they are published.
 - `anvil-core/` — library crate: ports, domain types, hearth reader
   - `anvil-core/features/` — behavioral contract for port interfaces
-  - `anvil-core/.brine` — manifest for core features
-  - `anvil-core/tests/brine_runner.rs` — per-crate test binary
 - `anvil-engine/` — binary crate: long-running engine process (gRPC API)
   - `anvil-engine/features/` — behavioral contract for engine API
-  - `anvil-engine/.brine` — manifest for engine features
-  - `anvil-engine/tests/brine_runner.rs` — per-crate test binary
 - `anvil-mcp/` — binary crate: MCP shim (JSON-RPC over stdio)
   - `anvil-mcp/features/` — behavioral contract for MCP protocol
   - `anvil-mcp/features/e2e/` — end-to-end features exercising shim + engine subprocess
-  - `anvil-mcp/.brine` — manifest for MCP features
-  - `anvil-mcp/tests/brine_runner.rs` — per-crate test binary
-- `anvil-test-support/` — dev-dep-only crate: shared step modules and brine-runner harness used by every crate's `tests/brine_runner.rs`
+- `brine-tests/` — the SECOND workspace: everything that depends on the private
+  `brine` sibling. Excluded from the default workspace so `cargo build` never
+  loads brine.
+  - `brine-tests/anvil-test-support/` — shared step modules and the brine-runner
+    harness used by every runner
+  - `brine-tests/anvil-{core,engine,mcp}-steps/` — step modules, the
+    `tests/brine_runner.rs` test binary, and the `.brine` manifest for the
+    matching product crate's features
 - `proto/anvil.proto` — gRPC service definition (AnvilService: Catalog + HealthCheck)
 - `AGENTS.md` — authoritative development-process definition (brine symlinks to this copy)
-- `.claude/commands/forge/` — skill prompt files (brine symlinks to this directory)
 - `forge/` — symlink to `../anvil-hearth` (anvil's own development artifacts)
 - `.hearth` — config pointing to `../anvil-hearth`
 
@@ -126,7 +171,7 @@ Available tools:
 
 ## Rules
 
-1. **Follow the forge lifecycle.** Development follows propose → spec → plan → implement → reflect → complete, with review at every transition. See `AGENTS.md`.
+1. **Follow the lifecycle.** Development follows propose → spec → plan → implement → reflect → complete, with review at every transition. See `AGENTS.md`.
 
 2. **Nothing with behavior is built without `.feature` files binding intent to execution.**
 

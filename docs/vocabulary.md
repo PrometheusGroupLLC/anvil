@@ -21,7 +21,7 @@ never merged.
 | Engine vs fallback discriminator | `supported_workflow` | **execution route** / `execution_route` |
 | Router hint | `workflow_hint` | **routing hint** / `routing_hint` |
 | Playbook authoring kind | `workflow_generation` | **playbook generation** / `playbook_generation` — the only spelling anything writes; a PERSISTED `kind:` carrying the retired one still resolves (read-side, bidirectional, `playbook_generation_aliases`) |
-| Foreign package/evaluation/dispatch schema | a downstream consumer's `workflow_id`, paths, or column | Owner-defined versioned migration; never blind Anvil substitution |
+| Foreign package/evaluation/dispatch schema | Accumulate `workflow_id`, Temper paths, Kiln column | Owner-defined versioned migration; never blind Anvil substitution |
 | Opaque historical identity | artifact IDs, old paths in transition records | Preserve byte-for-byte; label as historical where displayed |
 
 ### The runtime noun is ratified: **playbook run** / `playbook_run_id`
@@ -34,7 +34,7 @@ split: prose says “playbook run,” identifiers and wire fields say `playbook_
 `run_instance_id` is now a placeholder that outlived its purpose, and no surface may keep it: a
 name that was only ever provisional, left standing in a durable schema, is the second version of
 the same thing. Where an interim build already wrote it, the owner's migration takes the extra
-hop rather than stranding it (see a downstream store's two-hop `task_runs` rename:
+hop rather than stranding it (see `kiln-store`'s two-hop `task_runs` rename:
 `workflow_instance_id` → `playbook_run_id` and `run_instance_id` → `playbook_run_id`, both
 idempotent, only one applicable to any given database). It survives here only as the
 `run_instance` referent KEY below, which names the *referent* (“one execution driven by a

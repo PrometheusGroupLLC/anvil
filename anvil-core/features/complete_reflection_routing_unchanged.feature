@@ -4,13 +4,13 @@ Feature: Routing table unchanged by reflection_notes addition
   These scenarios are regression guards — they assert current Slice A
   routing values are preserved and no new routing entries were added.
 
-  Scenario: filtered_artifact_playbook (track, spec, reviewer) is fallback:forge:review
+  Scenario: filtered_artifact_playbook (track, spec, reviewer) is none
     Given a hearth with artifacts for checkin query:
       | id                        | type  | state | summary             |
       | 20260420T0210_spec_track  | track | spec  | Routing guard spec  |
     And the checkin query word list is "Cibola"
     When checkin query is executed with role "reviewer"
-    Then the checkin query filtered artifacts include "20260420T0210_spec_track" with execution_route "fallback:forge:review"
+    Then the checkin query filtered artifacts include "20260420T0210_spec_track" with execution_route "none"
 
   Scenario: filtered_artifact_playbook (track, spec_review, reviewer) is engine
     Given a hearth with artifacts for checkin query:

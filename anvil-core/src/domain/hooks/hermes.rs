@@ -138,6 +138,13 @@ fn timeout_secs(spec: &InstallSpec) -> u64 {
     (spec.timeout_ms / 1000).max(1)
 }
 
+/// The ROUTE-TURN entry's timeout in Hermes' seconds. Separate from
+/// [`timeout_secs`] because the route turn makes model calls and the gate does
+/// not; see [`InstallSpec::turn_timeout_ms`].
+fn turn_timeout_secs(spec: &InstallSpec) -> u64 {
+    (spec.turn_timeout_ms / 1000).max(1)
+}
+
 /// The lines of the anvil-managed `pre_tool_call` GATE entry. Opens with a
 /// `- matcher:` line carrying the marker comment.
 fn gate_entry_lines(spec: &InstallSpec) -> Vec<String> {
@@ -161,7 +168,7 @@ fn turn_entry_lines(harness: Harness, spec: &InstallSpec) -> Vec<String> {
             harness.turn_command_with_source(spec),
             HERMES_ENTRY_MARKER
         ),
-        format!("      timeout: {}", timeout_secs(spec)),
+        format!("      timeout: {}", turn_timeout_secs(spec)),
     ]
 }
 

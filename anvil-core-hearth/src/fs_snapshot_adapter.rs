@@ -1188,7 +1188,7 @@ impl SnapshotPort for FileSystemSnapshotAdapter {
         let existing = read_to_string_or_absent(&projection_path)?;
 
         // Preserve any line starting with "Last reflection:" — this line
-        // is owned by the forge:snapshot skill (and future forge:rebuild),
+        // is owned by the terminal-transition hook (and a future rebuild),
         // not this engine. If no such line exists we leave it absent
         // rather than synthesising one.
         let preserved_reflection = existing

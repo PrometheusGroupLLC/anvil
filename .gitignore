@@ -1,4 +1,19 @@
+# EVERY WORKSPACE ROOT NEEDS ITS OWN LINE.
+#
+# `/target` is ANCHORED to the repository root, so it covers exactly one
+# workspace and no other. Each additional workspace root brings its own
+# `target/` that this line does not reach — and an unignored one is not a small
+# mistake: `kit-build/target` reached 830 MB / 2996 files within an hour of the
+# workspace existing, all of it staged by a plain `git add -A` into a repository
+# being prepared for public release.
+#
+# This has now happened twice. `brine-tests/target` was caught by hand at stage
+# time when that workspace landed; `kit-build/target` was caught by a reviewer.
+# Neither was caught by a rule. If you add a fourth workspace root, add its line
+# HERE, in the same commit.
 /target
+/brine-tests/target
+/kit-build/target
 /dist
 
 # CI pipeline params files (contain inline secrets — never commit)

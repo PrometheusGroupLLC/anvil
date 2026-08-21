@@ -4,9 +4,24 @@
 //! - `VerificationCache` — per-token cache keyed by raw token string,
 //!   evicted at `expires_at`.  Satisfies spec Req 6: at most one broker
 //!   round-trip per token per TTL window.
-//! - `BrokerSessionVerifier` (Unix + `foundry-session` feature only) —
-//!   the sole production `SessionVerifier` implementation; delegates to
-//!   `foundry_kit_broker_client::verify_session_from_env`.
+//! - `DynSessionVerifier` + `EngineVerifier::External` — the injection point
+//!   for the production verifier, which is deliberately NOT in this crate.
+//!
+//! ## Where the production verifier went
+//!
+//! `BrokerSessionVerifier` used to live here, behind a `foundry-session`
+//! feature that pulled in `foundry-kit-broker-client` by path. Cargo loads the
+//! manifest of every reachable path dependency — optional and switched-off
+//! ones included — so that dependency made anvil's workspace unenumerable from
+//! a bare clone. It could not simply be inlined either: it parses JWTs and
+//! verifies RS256 signatures, and `anvil_core::ports::session_verifier` records
+//! the invariant that *anvil contains no inline JWT parsing, claim checking, or
+//! signature logic*.
+//!
+//! So it MOVED rather than being copied: it now lives in the
+//! `kit-build/anvil-kit-engine` package, in a second workspace the default one
+//! cannot reach, and is injected here at startup through `DynSessionVerifier`.
+//! This crate holds the SEAM and never the broker client.
 //!
 //! ## Revocation-latency bound (spec Req 6 / G1)
 //!
@@ -27,10 +42,7 @@
 
 use anvil_core::ports::session_verifier::{SessionVerifier, VerifiedSession, VerifyError};
 use std::collections::HashMap;
-use std::sync::Mutex;
-// `Arc` is only used by the feature-gated `EngineVerifier::Broker` arm.
-#[cfg(all(unix, feature = "foundry-session"))]
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now_secs() -> i64 {
@@ -124,70 +136,86 @@ impl<V: SessionVerifier> VerificationCache<V> {
     }
 }
 
-// ── BrokerSessionVerifier ──────────────────────────────────────────────────
-//
-// Unix-only, behind the `foundry-session` feature flag.  The sole production
-// `SessionVerifier`; delegates to `KitBrokerClient::verify_session`, honoring
-// the FORWARDED bearer token from the gRPC request metadata (J5).  The broker
-// client is constructed from the env (`FOUNDRY_BROKER_SOCKET`); the JWT and
-// expected audience are the values passed by `authorize()`, NOT re-read from
-// `FOUNDRY_SESSION_TOKEN`.
+// ── DynSessionVerifier — the out-of-crate injection point ───────────────────
 
-#[cfg(all(unix, feature = "foundry-session"))]
-pub struct BrokerSessionVerifier {
-    /// The kit id for this deployment (e.g. `"anvil-kit"`).
-    kit_id: String,
+/// Dyn-compatible mirror of [`SessionVerifier`].
+///
+/// `SessionVerifier` uses AFIT (`async fn` in trait) and so has no vtable. This
+/// trait boxes the future so a verifier implemented OUTSIDE this crate can be
+/// injected at startup. That is what lets the Foundry-coupled verifier live in a
+/// package the default workspace cannot reach: `anvil-engine` holds the seam,
+/// never the broker client.
+/// Seals [`DynSessionVerifier`]. NOT nameable outside this crate, so no foreign
+/// type can satisfy the supertrait, so no foreign type can implement
+/// `DynSessionVerifier` except through the blanket impl below.
+///
+/// The seal is load-bearing and was added after MEASURING that the blanket impl
+/// alone does not deliver the property. A direct downstream
+/// `impl DynSessionVerifier for RogueVerifier` — one that returns
+/// `Ok(None)` without verifying anything — COMPILED CLEANLY against the blanket
+/// impl, because rustc's overlap check is satisfied once it can see that
+/// `RogueVerifier` does not implement `SessionVerifier`. "There is a blanket
+/// impl" is therefore not the same claim as "the port is the only way in", and
+/// the difference is a second, silent verification seam.
+mod sealed {
+    pub trait Sealed {}
+    impl<T: super::SessionVerifier + ?Sized> Sealed for T {}
 }
 
-#[cfg(all(unix, feature = "foundry-session"))]
-impl BrokerSessionVerifier {
-    /// Construct a new `BrokerSessionVerifier` for the given kit.
-    pub fn new(kit_id: impl Into<String>) -> Self {
-        Self {
-            kit_id: kit_id.into(),
-        }
+pub trait DynSessionVerifier: sealed::Sealed + Send + Sync {
+    fn verify_dyn<'a>(
+        &'a self,
+        jwt: &'a str,
+        expected_audience: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Option<VerifiedSession>, VerifyError>>
+                + Send
+                + 'a,
+        >,
+    >;
+}
+
+/// THE ONLY WAY TO BE A `DynSessionVerifier` IS TO BE A `SessionVerifier`.
+///
+/// Blanket, and deliberately the only impl anywhere. Written by hand in the
+/// implementing crate instead, the "everything still goes through the port"
+/// property would hold only by CUSTOM: nothing would stop a future verifier
+/// implementing `verify_dyn` with its own signature checking and never touching
+/// `SessionVerifier` at all — a second verification seam, indistinguishable
+/// from the first at the call site, and the exact shape of bug the port
+/// abstraction exists to prevent.
+///
+/// With this impl, `DynSessionVerifier` is not implementable directly: any type
+/// that satisfies it does so BY satisfying the port. One seam becomes a fact
+/// about the types rather than a claim in a comment.
+///
+/// This compiles because `SessionVerifier` already requires `Send + Sync` and
+/// already declares its returned future `Send`, so there is nothing left to
+/// prove about the boxed future.
+impl<T: SessionVerifier + ?Sized> DynSessionVerifier for T {
+    fn verify_dyn<'a>(
+        &'a self,
+        jwt: &'a str,
+        expected_audience: &'a str,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<Output = Result<Option<VerifiedSession>, VerifyError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(self.verify(jwt, expected_audience))
     }
-}
-
-#[cfg(all(unix, feature = "foundry-session"))]
-impl SessionVerifier for BrokerSessionVerifier {
-    async fn verify(
-        &self,
-        jwt: &str,
-        expected_audience: &str,
-    ) -> Result<Option<VerifiedSession>, VerifyError> {
-        // Honor the PASSED token (the forwarded bearer from gRPC metadata),
-        // not `FOUNDRY_SESSION_TOKEN` (J5).  `from_env` builds the broker
-        // client from `FOUNDRY_BROKER_SOCKET`; `verify_session` then verifies
-        // exactly the JWT and audience `authorize()` handed us.  A failure to
-        // construct the client (e.g. broker socket unreachable) surfaces as a
-        // refuse-able error (fail-closed, spec Req 6) — never a bypass.
-        use foundry_kit_broker_client::KitBrokerClient;
-
-        let client = KitBrokerClient::from_env(self.kit_id.clone()).map_err(map_broker_error)?;
-        // `verify_session` returns the verified session directly (not an
-        // Option); any verification failure maps to a refuse-able `VerifyError`.
-        match client.verify_session(jwt, expected_audience).await {
-            Ok(fvs) => Ok(Some(map_verified_session(fvs))),
-            Err(e) => Err(map_verify_error(e)),
-        }
-    }
-}
-
-/// Map `foundry_kit_broker_client::KitBrokerError` (client-construction /
-/// transport failures) to a refuse-able `VerifyError`.  Every variant is a
-/// broker-reachability failure ⇒ `KeyFetch` ⇒ refuse (fail-closed, Req 6).
-#[cfg(all(unix, feature = "foundry-session"))]
-fn map_broker_error(_e: foundry_kit_broker_client::KitBrokerError) -> VerifyError {
-    VerifyError::KeyFetch
 }
 
 // ── StandaloneVerifier ──────────────────────────────────────────────────────
 //
 // A zero-dep concrete verifier that always reports "no session" (`Ok(None)`).
-// Used as the `EngineVerifier::Standalone` arm and on the feature-off /
-// non-unix build, where the broker dep is compiled out.  Keeps `AnvilServer`
-// non-generic and dep-free in standalone builds.
+// Used as the `EngineVerifier::Standalone` arm, and as the fallback whenever no
+// external verifier has been injected — which is every build of this crate's
+// own `anvil-engine` bin.  Keeps `AnvilServer` non-generic and dep-free in
+// standalone builds.
 
 #[derive(Clone)]
 pub struct StandaloneVerifier;
@@ -263,9 +291,13 @@ impl SessionVerifier for StubSessionVerifier {
 pub enum EngineVerifier {
     /// Standalone mode: no session, verify => Ok(None).
     Standalone,
-    /// Production Foundry verifier (Unix + feature only).
-    #[cfg(all(unix, feature = "foundry-session"))]
-    Broker(Arc<BrokerSessionVerifier>),
+    /// A verifier supplied from OUTSIDE this crate — in production, the
+    /// Foundry broker verifier that `kit-build/anvil-kit-engine` injects.
+    ///
+    /// Ungated on purpose. The arm is a plain injection point with no private
+    /// dependency behind it, so there is nothing to conditionally compile; what
+    /// varies is only whether any caller has something to put in it.
+    External(Arc<dyn DynSessionVerifier>),
     /// Hermetic test double (debug builds only; never ships in release).
     #[cfg(debug_assertions)]
     Stub(StubSessionVerifier),
@@ -279,40 +311,9 @@ impl SessionVerifier for EngineVerifier {
     ) -> Result<Option<VerifiedSession>, VerifyError> {
         match self {
             EngineVerifier::Standalone => Ok(None),
-            #[cfg(all(unix, feature = "foundry-session"))]
-            EngineVerifier::Broker(v) => v.verify(jwt, expected_audience).await,
+            EngineVerifier::External(v) => v.verify_dyn(jwt, expected_audience).await,
             #[cfg(debug_assertions)]
             EngineVerifier::Stub(v) => v.verify(jwt, expected_audience).await,
         }
-    }
-}
-
-/// Map the foundry crate's `VerifiedSession` to the anvil-core domain mirror.
-#[cfg(all(unix, feature = "foundry-session"))]
-fn map_verified_session(fvs: foundry_kit_broker_client::VerifiedSession) -> VerifiedSession {
-    VerifiedSession {
-        sub: fvs.sub,
-        sid: fvs.sid,
-        provider: fvs.provider,
-        scopes: fvs.scopes,
-        audience: fvs.audience,
-        expires_at: fvs.expires_at,
-    }
-}
-
-/// Map `foundry_kit_broker_client::SessionVerifyError` to `anvil_core::ports::session_verifier::VerifyError`.
-#[cfg(all(unix, feature = "foundry-session"))]
-fn map_verify_error(e: foundry_kit_broker_client::SessionVerifyError) -> VerifyError {
-    use foundry_kit_broker_client::SessionVerifyError;
-    match e {
-        SessionVerifyError::Malformed(_) => VerifyError::Malformed,
-        SessionVerifyError::BadSignature => VerifyError::BadSignature,
-        SessionVerifyError::KidMismatch { .. } => VerifyError::KidMismatch,
-        SessionVerifyError::WrongIssuer { .. } => VerifyError::WrongIssuer,
-        SessionVerifyError::WrongAudience { .. } => VerifyError::WrongAudience,
-        SessionVerifyError::Expired { .. } => VerifyError::Expired,
-        SessionVerifyError::NotYetValid { .. } => VerifyError::NotYetValid,
-        SessionVerifyError::KeyFetch(_) => VerifyError::KeyFetch,
-        SessionVerifyError::KeyDecode(_) => VerifyError::KeyDecode,
     }
 }

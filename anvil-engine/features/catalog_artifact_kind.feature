@@ -14,7 +14,7 @@ Feature: Catalog playbook kind
     When the catalog RPC is called
     Then the catalog response contains 1 active artifacts
     And the catalog response includes artifact "20260420T1000_test_workflow" with type "playbook"
-    And the active artifact "20260420T1000_test_workflow" has execution_route "fallback:forge:review"
+    And the active artifact "20260420T1000_test_workflow" has execution_route "none"
     And the catalog response does not have invalid artifacts
 
   @registration

@@ -63,7 +63,7 @@ When folding reflection deltas, route each delta to exactly one tagged destinati
 
 - `decision` — what was CHOSEN between alternatives, with rationale
 - `tension` — what we ASK (unresolved question)
-- `learning` — what we NOTICED about system or agent behavior (via `forge:learn capture`)
+- `learning` — what we NOTICED about system or agent behavior
 - `initiative-evidence` — a pattern instance against an active initiative
 
 The human triages tagged deltas into the appropriate artifacts; this step only

@@ -68,13 +68,15 @@ use anvil_core::domain::hooks::route_turn::{
     extract_user_message, format_guidance, format_park_hint, CandidateBrief, InProgressSignal,
     RouteTurnOutcome, RouterVerdict,
 };
-use anvil_core::domain::hooks::{Harness, InstallSpec, DEFAULT_GATE_COMMAND, DEFAULT_TURN_COMMAND};
+use anvil_core::domain::hooks::{
+    Harness, InstallSpec, DEFAULT_GATE_COMMAND, DEFAULT_TURN_COMMAND, DEFAULT_TURN_TIMEOUT_MS,
+};
 use anvil_core::ports::delivery_log_port::{
     project_delivery_record, DeliveryLogWritePort, DeliveryObservation,
 };
 use anvil_core_hearth::fs_delivery_log_adapter::FileSystemDeliveryLogAdapter;
 use anvil_core_hearth::fs_query_adapter::FileSystemQueryAdapter;
-use foundry_engine_addressing::{resolve, ResolveOpts};
+use anvil_engine::engine_addressing::{resolve, ResolveOpts};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -97,10 +99,33 @@ const ENGINE_HEALTH_PATH: &str = "/health";
 /// that declined. This is the actual cause of "anvil delivers nothing"; the candidate-set
 /// widening was necessary but could never have been observed through a 1500ms wall.
 ///
-/// Raised to 8000 to clear the measured range with headroom. Override with
-/// `ANVIL_ROUTE_TURN_TIMEOUT_MS` (the engine's own latency is the thing to fix; this cap
-/// must not silently hide it again).
-const ROUTE_TURN_TIMEOUT_MS: u64 = 8000;
+/// Raised to 8000 to clear the then-measured range with headroom. That was still too low:
+/// once the hook could actually AUTHENTICATE (the default-path broker rung), a full
+/// authenticated turn measured **8.5-9.5s** (worst 9.52s), so 8000 killed every one of
+/// them. Raised to 90000 — deliberately far above any plausible turn, because the value
+/// is not a tuning parameter and pretending to tune it invites re-tuning it downward.
+///
+/// # The ordering invariant — READ THIS BEFORE CHANGING EITHER NUMBER
+///
+/// This cap does NOT stand alone. The harness imposes its own cap on the hook process:
+/// the `"timeout"` field on the anvil-managed route-turn hook entries (Claude Code:
+/// `~/.claude/settings.json`, written by `anvil-hooks install` from
+/// [`anvil_core::domain::hooks::InstallSpec::turn_timeout_ms`], currently 100000).
+///
+/// **The harness cap must stay STRICTLY GREATER than this one.** If the harness cap is
+/// the lower of the two, the harness kills the process before this deadline can fire —
+/// and this deadline is what writes the `engine_timeout` delivery-log row. An inverted
+/// pair does not merely time out sooner; it times out INVISIBLY, which is the exact
+/// failure mode (an unlogged early return) that hid a total delivery outage for weeks.
+///
+/// There is no automated guard on this relation: one side is a Rust constant and the
+/// other is JSON in a user's home directory, and a test that reached across that seam
+/// would be more fragile than the invariant it protects. This comment is the guard.
+///
+/// Override with `ANVIL_ROUTE_TURN_TIMEOUT_MS`. The engine's own latency remains the
+/// thing to actually fix — see the route-latency finding: the turn currently makes TWO
+/// Kiln calls (engine `Route` and this hook), and this cap must not silently hide that.
+const ROUTE_TURN_TIMEOUT_MS: u64 = 90000;
 
 /// Effective route-turn cap: `ANVIL_ROUTE_TURN_TIMEOUT_MS` if set and valid, else the
 /// constant above.
@@ -159,7 +184,7 @@ const USAGE: &str = "\
 anvil-hooks — per-harness hook installer + runtime gate
 
 USAGE:
-  anvil-hooks install   [--harness auto|claude-code|codex|kiln|hermes] [--config-dir <path>] [--hearth <path>] [--command <cmd>] [--timeout <ms>] [--with-mcp] [--mcp-command <cmd>] [--codex-plugin-managed]
+  anvil-hooks install   [--harness auto|claude-code|codex|kiln|hermes] [--config-dir <path>] [--hearth <path>] [--command <cmd>] [--timeout <ms>] [--turn-timeout <ms>] [--with-mcp] [--mcp-command <cmd>] [--codex-plugin-managed]
   anvil-hooks uninstall [--harness auto|claude-code|codex|kiln|hermes] [--config-dir <path>] [--with-mcp]
   anvil-hooks gate-check                       # reads the pre-tool JSON payload on stdin
   anvil-hooks render-codex-plugin-hooks [--command <cmd>] [--timeout <ms>]
@@ -171,6 +196,10 @@ USAGE:
   anvil-hooks amend --artifact-path <p> --kind <k> --target-document <d> --actor-name <n> --actor-type <t> --actor-model <m> --actor-provider <p> [--target-id <id>] [--op-kind <k>] [--body <text>] [--new-kind <k>] [--anchor <a>] [--hearth <path>] [--port <n>]   # record a structured amendment op against a frozen document (and drive completed→amend) via the direct-engine channel
 
 NOTES:
+  --timeout sets the GATE hook's timeout; --turn-timeout sets the ROUTE-TURN hook's,
+  which defaults far higher because a route turn makes model calls and a gate does
+  not. --turn-timeout must stay ABOVE the binary's own ROUTE_TURN_TIMEOUT_MS (90000)
+  or the harness reaps the process before the binary's deadline can log the timeout.
   --harness auto (default) installs into every harness whose config dir is detected.
   --config-dir overrides the harness's conventional dir (~/.claude, ~/.codex, ~/.kiln, ~/.hermes).
   By DEFAULT install/uninstall deliver HOOKS ONLY and never touch any harness's MCP
@@ -340,6 +369,9 @@ fn install_spec(args: &[String]) -> InstallSpec {
         timeout_ms: flag(args, "--timeout")
             .and_then(|s| s.parse().ok())
             .unwrap_or(5000),
+        turn_timeout_ms: flag(args, "--turn-timeout")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(DEFAULT_TURN_TIMEOUT_MS),
         turn_command: flag(args, "--turn-command")
             .unwrap_or(DEFAULT_TURN_COMMAND)
             .to_string(),

@@ -1,8 +1,8 @@
 Feature: execution_route discriminator on filtered artifacts
   Each artifact returned in CheckinResponse.filtered_artifacts carries a
   execution_route value describing the action the session role would
-  take on it — "engine" if the engine handles it today, or
-  "fallback:forge:<skill>" naming the forge skill otherwise.
+  take on it — "engine" if the engine handles it, or "none" if no action
+  exists for that role on that subject.
 
   Scenario: Reviewer on track in spec_review gets engine (context delivery)
     Given a hearth with artifacts for checkin query:
@@ -13,16 +13,16 @@ Feature: execution_route discriminator on filtered artifacts
     And the checkin query word list is "Cibola"
     When checkin query is executed with role "reviewer"
     Then the checkin query filtered artifacts include "20260414T0405_spec_track" with execution_route "engine"
-    And the checkin query filtered artifacts include "20260413T1349_plan_review" with execution_route "fallback:forge:review"
+    And the checkin query filtered artifacts include "20260413T1349_plan_review" with execution_route "engine"
     And the checkin query filtered artifacts include "20260412T2021_proposal" with execution_route "engine"
 
-  Scenario: Reviewer on track in spec gets fallback (post-cutover: doer drives spec -> spec_review)
+  Scenario: Reviewer on track in spec has no action (post-cutover: doer drives spec -> spec_review)
     Given a hearth with artifacts for checkin query:
       | id                       | type     | state | summary         |
       | 20260414T0405_spec_track  | track    | spec  | Doer in progress|
     And the checkin query word list is "Cibola"
     When checkin query is executed with role "reviewer"
-    Then the checkin query filtered artifacts include "20260414T0405_spec_track" with execution_route "fallback:forge:review"
+    Then the checkin query filtered artifacts include "20260414T0405_spec_track" with execution_route "none"
 
   Scenario: Creator on proposal in active gets engine
     Given a hearth with artifacts for checkin query:

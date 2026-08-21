@@ -3,13 +3,18 @@ name = "anvil-engine"
 version = "0.1.0"
 edition = "2021"
 license = "Apache-2.0"
-# Unpublishable: versionless path deps (not resolvable from crates.io).
+# Not published: anvil is distributed as a Foundry kit, not as a crates.io
+# library. (The former blocker — git dependencies on a private repository — is
+# gone; what remains are versionless in-repo path deps, which is fine for a
+# binary crate that is never uploaded.)
 publish = false
 
-[features]
-# Enable the production Foundry session verifier (wraps foundry-kit-broker-client).
-# Unix-only: the broker client uses Unix domain sockets.
-foundry-session = ["dep:foundry-kit-broker-client"]
+# No `[features]`. There WAS a `foundry-session` feature here that pulled in
+# `foundry-kit-broker-client` by path. The Foundry session verifier now lives in
+# `kit-build/anvil-kit-engine` instead, because a path dep on a private sibling
+# — even an optional, switched-off one — makes this workspace unenumerable from
+# a bare clone: cargo loads the manifest of every reachable path dependency
+# before it ever consults the feature graph.
 
 [dependencies]
 anvil-core-hearth = { path = "../anvil-core-hearth" }
@@ -18,7 +23,12 @@ anvil-core = { path = "../anvil-core" }
 prost = { workspace = true }
 prost-types = { workspace = true }
 tonic = { workspace = true }
-tokio = { workspace = true }
+# `time` is declared explicitly rather than inherited transitively (axum, tonic
+# and tower all happen to enable it today). `kit_bearer` puts a REQUIRED
+# deadline on every broker dial; a dependency bump that dropped the transitive
+# enable would break that build rather than silently removing the bound, and
+# that is the outcome to prefer.
+tokio = { workspace = true, features = ["time"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
@@ -31,18 +41,25 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 libc = { workspace = true }
 rand = { workspace = true }
-foundry-engine-addressing = { path = "../vendor/foundry-engine-addressing" }
-foundry-kit-telemetry = { path = "../vendor/foundry-kit-telemetry" }
-
-[target.'cfg(unix)'.dependencies]
-foundry-kit-broker-client = { path = "../../foundry/crates/foundry-kit-broker-client", optional = true }
+# NOTE: engine addressing (the `~/.anvil/engine.json` rendezvous record + the
+# health-probing resolver) and kit telemetry are anvil's OWN code — see
+# `src/engine_addressing.rs` and `src/kit_telemetry.rs`. They are inlined, not
+# depended on: the upstream crates were never published, so the only way to
+# resolve them was a path dep on a private sibling checkout, which makes this
+# workspace unenumerable from a bare clone. Both files preserve the cross-kit
+# on-disk contracts (the engine.json shape, the telemetry jsonl row shape and
+# envelope) byte-for-byte, because Foundry reads them.
 
 [build-dependencies]
 tonic-build = { workspace = true }
 
-[dev-dependencies]
-anvil-engine-steps = { path = "../anvil-engine-steps" }
-anvil-test-support = { path = "../anvil-test-support" }
+# No `[dev-dependencies]`: they were `anvil-engine-steps` and
+# `anvil-test-support`, both of which depend on the private `brine` sibling.
+# Cargo loads a dev-dependency's manifest like any other, so declaring them here
+# is what dragged brine into the default workspace and made `cargo metadata`
+# exit 101 without that sibling. The Brine runner for this crate's features now
+# lives at `brine-tests/anvil-engine-steps/tests/brine_runner.rs`; the features
+# themselves stay here in `anvil-engine/features/`.
 
 # The long-running engine process (gRPC API).
 [[bin]]
@@ -57,9 +74,10 @@ path = "src/main.rs"
 name = "anvil-hooks"
 path = "src/bin/anvil-hooks.rs"
 
-[[test]]
-name = "brine_runner"
-harness = false
-
+# Inherited wholesale. The `foundry-session` check-cfg declaration that stops
+# rustc's "unexpected cfg condition value" warning is emitted from `build.rs`
+# instead of a package `[lints.rust]` table here — see the comment there. A
+# package lint table would have to hand-restate every workspace lint, and a
+# hand-maintained second copy of a lint set is a copy that drifts.
 [lints]
 workspace = true

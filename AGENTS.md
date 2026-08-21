@@ -1,6 +1,6 @@
 # Forge Agent Workflow
 
-This document describes the development workflow for agents working on this project. Read PHILOSOPHY.md for the testing philosophy. Read CLAUDE.md for the build commands and rules. 
+This document describes the development workflow for agents working on this project. Read PHILOSOPHY.md for the testing philosophy. Read CLAUDE.md for the build commands and rules. Read `forge/projections/` for current project state (intent.md, execution.md, truth.md, forward.md — read the files relevant to your work).
 
 ## Mental model
 
@@ -88,7 +88,7 @@ abandoned  abandoned       superseded / abandoned + amend loop
 
 Milestones follow the same universal lifecycle patterns as proposals and tracks: frozen document after review, append-only amendments, reflection before completion. The distinction between artifact kinds is their *scope* (delivery vs. intent vs. execution), not their lifecycle machinery.
 
-- A milestone starts as `draft` — the agent drafts content via `forge:milestone`, then `forge:review` evaluates it.
+- A milestone starts as `draft` — the agent drafts content in the engine-served draft phase, then the review gate evaluates it.
 - Human approval of draft review constitutes activation — the milestone transitions to `active`. The human exercises timing judgment by choosing *when* to approve, not by a separate post-review gate.
 - The human moves an active milestone to `reflecting` when they judge the success criteria are met (or are no longer relevant). Completion is human judgment informed by linked work and stated criteria, not a mechanical rollup of track/proposal states.
 - Active milestones can receive amendments via `milestone.amendments.md` (state-machine mode: `active → amend → amend_review ⇄ amend_revision → active`).
@@ -133,12 +133,12 @@ tension → tension_review ⇄ tension_revision → investigating → decided �
 - `evidence.md` — append-only support/contradiction over time
 - `review.md` — append-only review conversation
 - `amendments.md` — post-resolution-freeze changes (optional)
-- `reflection.md` and `reflection.review.md` — created later by `forge:reflect`, not at directory creation time
+- `reflection.md` and `reflection.review.md` — created later in the reflecting phase, not at directory creation time
 - `status.yaml` — lifecycle position + transition history (`kind: decision`)
 
 **Evidence accumulation:** Decision evidence is append-only and event-sourced. Event types: `tested`, `tension-surfaced`, `validity-shifted`. Evidence enters the system through two paths:
 
-- **In-band:** Track reflections (knowledge delta lens) → harvested by `forge:snapshot` during terminal transitions
+- **In-band:** Track reflections (knowledge delta lens) → harvested during terminal transitions
 - **Out-of-band:** Direct appends to `evidence.md` for observations outside normal reflection
 
 ### Learning lifecycle
@@ -176,7 +176,7 @@ observation → observation_review ⇄ observation_revision → conclusion → c
 - `evidence.md` — append-only progression log across contexts
 - `review.md` — append-only review conversation (single file, all review phases)
 - `amendments.md` — post-conclusion-freeze changes (optional)
-- `reflection.md` and `reflection.review.md` — created later by `forge:reflect`, not at directory creation time
+- `reflection.md` and `reflection.review.md` — created later in the reflecting phase, not at directory creation time
 - `status.yaml` — lifecycle position + transition history (`kind: learning`)
 
 **Evidence accumulation:** Learning evidence is append-only and event-sourced. Event types: `observed`, `confirmed`, `contradicted`, `graduated`. Evidence enters the system through two paths:
@@ -228,63 +228,34 @@ A frozen `proposal.md` is never edited after approval. When track execution teac
 
 Only reviewed and human-approved amendments are authoritative. An unapproved amendment is a proposal, not a decision.
 
-## Skills
+## How work is driven
 
-The skills below are dev-workflow lifecycle skills — they belong to the `forge-build` software-dev workflow bundled with the Forge/Anvil distribution. A different workflow would have different skills with a different prefix. The `/forge:` prefix reflects Forge-as-distributor, not Forge-as-owner.
+There are no lifecycle skills. There is no skill to invoke for any phase of any
+artifact's lifecycle, and the engine will never hand you the name of one.
 
-**Slash commands are not a command-line tool.** These are agent workflow skills — markdown files Claude Code reads to drive a workflow phase. Bash automation, CI hooks, and batch operations are a separate concept (not yet implemented). Do not conflate slash commands with command-line automation.
+The anvil engine is the front door. `begin` / `complete` / `snapshot` / `amend`
+drive every lifecycle phase, and each phase's guidance is served to you as the
+machine's state hook (see `playbooks/*/hooks/`) — delivered inline in the
+response's `context_text`, not addressed by name for you to go fetch.
 
-### Lifecycle skills
+To act on any artifact: call the engine and follow the returned `context_text`.
+Each action carries an `execution_route` discriminator, which has exactly two
+values:
 
-> **Retired — engine-served.** The lifecycle skills below are no longer invoked as manual
-> protocols. The anvil engine is the front door: `begin` / `complete` / `snapshot` / `amend`
-> drive every lifecycle phase and serve each phase's guidance as the machine's state hook
-> (see `playbooks/*/hooks/`). The table is retained as a map from the historical skill name
-> to the engine-served phase it became. To act on any artifact, call the engine and follow
-> the returned `context_text`; check each action's `supported_workflow` discriminator
-> (`engine` vs `fallback:forge:<skill>`) to confirm routing.
+- `engine` — call the engine to execute it.
+- `none` — no action exists for your role on that subject.
 
-Each row records the lifecycle phase the engine now serves. Each transition either produces an artifact for a lifecycle phase or transitions the state.
+Deterministic bookkeeping (status.yaml mutation, registry sync, incremental
+projection updates) is engine-owned and compiled, recorded as part of the
+`complete` / `snapshot` RPCs. The non-deterministic remainder — narrative
+truth.md synthesis, evidence harvesting from reflections, forward.md edits, and
+full projection regeneration on terminal transitions — is served as the
+machine's terminal-state hooks, again as content in `context_text`.
 
-| Historical skill | Scope | Engine-served phase |
-|-------|-------|---------|
-| `forge:envision` | proposal | Frame the problem and desired future state (vision phase) |
-| `forge:propose` | proposal | Research and write the approach (proposal phase, after approved vision) |
-| `forge:milestone` | milestone | Create milestone drafts, handle supersede/abandon transitions |
-| `forge:spec` | track | Create spec.md — what and why |
-| `forge:plan` | track | Create plan.md — how, with codebase research |
-| `forge:implement` | track | Execute plan via TDD |
-| `forge:initiative` | initiative | Create and manage initiatives — draft, revise, promote, demote, retire, log, reflect (mixed lifecycle/utility modes) |
-| `forge:decide` | decision | Create and manage decisions — question through answer with rationale and validity conditions |
-| `forge:learn` | learning | Create and manage learnings — observations that mature from raw signal through interpreted conclusion to validated established knowledge, with terminal paths of graduated or retired |
-| `forge:review` | all | Stage-aware review of any artifact, including initiative definitions, initiative reflections, decision tensions, decision resolutions, spark reflections, and initiative regression checking in implementation reviews |
-| `forge:reflect` | all | Semantic delta — what we learned; protocol + 3 criteria files (track, proposal, milestone) loaded on demand per artifact kind |
-| `forge:amend` | all | Amend frozen phase artifacts (proposal/milestone/decision = state-machine, track/initiative = document-only) |
-| `forge:complete` | all | Administrative closure — verify (including knowledge delta coverage), record terminal transition via the `snapshot` MCP tool, then regenerate projections via the inline rebuild (track/proposal terminals). Milestone supersede/abandon terminals own their own inline rebuild inside `forge:milestone`. |
-
-The engine records deterministic state transitions (status.yaml mutation, registry sync, incremental projection updates) as part of the `complete` / `snapshot` RPCs — an engine-owned, compiled implementation. The non-deterministic remainder (narrative truth.md synthesis, evidence harvesting from reflections, forward.md edits) and full projection regeneration (rebuild) on terminal transitions are served as the machine's terminal-state hooks; the engine carries the guidance in `context_text`. The historical `forge:snapshot` / `forge:complete` / `forge:milestone` skills that owned this work are retired.
-
-### Service skills
-
-Service skills participate in lifecycle transitions as a delegate — they record transitions and maintain projections but do not author lifecycle artifacts or decide what transitions to make.
-
-| Skill / Tool | Scope | Purpose |
-|-------|-------|---------|
-| `snapshot` MCP tool (engine-owned) | all | Record state transitions deterministically — append transition + update `state:` in status.yaml, move/create entries in the appropriate registry, incrementally update deterministic projection layers (execution.md, intent.md, decisions.md, sparks.md count line). Invoked directly by lifecycle skills. Requires explicit `actor_name` + runtime `actor_*` fields per call — engine rejects empty values with `actor_name_required` / `actor_params_required`. |
-| `forge:snapshot` | all | Handle the non-deterministic remainder after a deterministic transition lands — truth.md synthesis, forward.md narrative edits, terminal-transition evidence harvesting into initiative/decision `evidence.md`. Invoked as a subagent by lifecycle skills only when narrative synthesis is needed (terminal transitions). Full rebuild is owned by the terminal-transition skills inline, not this skill. |
-
-### Utility skills
-
-Utility skills support work around the lifecycle without defining lifecycle transitions. They do not change state machine position.
-
-| Skill | Scope | Purpose |
-|-------|-------|---------|
-| `forge:id` | both | Register actor identity — create name, populate actors table, handle parameter changes |
-| `forge:improve` | both | Analyze session observations to propose workflow improvements |
-| `forge:revert` | track | Roll back changes at task, phase, or track scope with git-aware safety |
-| `forge:spark` | sparks | Capture ideas that don't belong in the current artifact — default (capture/annotate), annotate (explicit), reflect (spark triage) |
-| `forge:sync` | track | Sync worktree branch with main |
-| `forge:verify` | track | Batch-verify manual verification tasks |
+Actor identity is supplied per call: every `begin` / `complete` / `snapshot`
+carries an explicit `actor_name` plus the runtime `actor_*` fields detected from
+your current environment. The engine rejects empty values with
+`actor_name_required` / `actor_params_required`.
 
 ## Registries
 
@@ -337,7 +308,7 @@ transitions:
 - `blocked_by` lists artifact directory names (tracks, proposals, or milestones) that must reach a terminal state (`completed`, `superseded`, `abandoned`) before this item can proceed.
 - The agent starting the blocked track is responsible for verifying blockers are cleared and removing them from `blocked_by`. Git history preserves the record of past blocking.
 - Registries may project blocking status when listing items, but `status.yaml` is the source of truth — not the registry.
-- `forge:implement` warns (does not hard-gate) when starting a track whose blockers have not been cleared.
+- The implementing phase warns (does not hard-gate) when starting a track whose blockers have not been cleared.
 
 Blocking complements priority. Priority says "work on this first by choice"; blocking says "this cannot proceed yet regardless of priority." Both are needed for an agent to answer "what should I do next?"
 
@@ -352,21 +323,21 @@ The project's current state is projected into five layer-specific files under `f
 | `truth.md` | Architectural truth | Active invariants, intentional exceptions, deprecated assumptions (from reflection projection deltas) |
 | `forward.md` | Forward projection | What's next and why; notes significant registry reorderings since last generation |
 | `decisions.md` | Decisions | State counts, tensions by priority, recently resolved — not read at conversation start; read by decision triage agents and discovery habit searches (which also cover `learnings.md` alongside decisions) |
-| `sparks.md` | Sparks | Untriaged spark counts, annotation counts, last reflection date — count line updated by the `snapshot` MCP tool on spark/annotation events; "Last reflection:" narrative line updated by `forge:snapshot` |
+| `sparks.md` | Sparks | Untriaged spark counts, annotation counts, last reflection date — count line updated by the `snapshot` MCP tool on spark/annotation events; "Last reflection:" narrative line updated by the terminal-transition hook |
 
-Deterministic projection layers (execution.md, intent.md, decisions.md, sparks.md count line) are updated incrementally by the `snapshot` MCP tool on every state transition. Narrative layers (truth.md, forward.md) and terminal-transition evidence harvesting are updated by `forge:snapshot`. Each file carries its own frontmatter (`incremental_count`, `base_snapshot`, `last_updated`, `after_event`). Full rebuilds from the last human-verified base are regenerated inline by the terminal-transition skills themselves — `forge:complete` for track/proposal terminals, `forge:milestone` for milestone supersede/abandon. Agents read the projection files relevant to their work at conversation start.
+Deterministic projection layers (execution.md, intent.md, decisions.md, sparks.md count line) are updated incrementally by the `snapshot` MCP tool on every state transition. Narrative layers (truth.md, forward.md) and terminal-transition evidence harvesting are updated by the terminal-transition hook. Each file carries its own frontmatter (`incremental_count`, `base_snapshot`, `last_updated`, `after_event`). Full rebuilds from the last human-verified base are regenerated inline as part of the terminal transition itself, for track/proposal terminals and for milestone supersede/abandon. Agents read the projection files relevant to their work at conversation start.
 
 ## Spark capture
 
-Any agent doing forge work may invoke `forge:spark` as a non-blocking subagent when encountering an idea that doesn't belong in the current artifact. This is the single authoritative location for this guidance.
+Any agent may capture a spark as a non-blocking subagent when encountering an idea that doesn't belong in the current artifact. This is the single authoritative location for this guidance.
 
-**When to spark:** You notice a cross-cutting concern, a potential improvement, a question that doesn't belong in your current spec/plan/review/reflection — but you don't want to lose it. Invoke `forge:spark` with the idea and continue your primary work.
+**When to spark:** You notice a cross-cutting concern, a potential improvement, a question that doesn't belong in your current spec/plan/review/reflection — but you don't want to lose it. Capture the spark with the idea and continue your primary work.
 
 **How:** Invoke as a non-blocking subagent passing `body` (the idea), `actor` (your name), and `origin` (your current artifact and phase). The spark subagent reads undispositioned sparks, determines whether to capture a new spark or annotate an existing one, and updates the sparks projection. You never load the sparks log.
 
-**Coordination model:** The sparks directory has no `status.yaml`. There is no state machine. Capture and annotate are fire-and-forget. Spark reflection (`forge:spark reflect`) is always explicitly invoked by the human — never auto-detected by agents. No agent tasked with specific work is responsible for deciding when to reflect on sparks.
+**Coordination model:** The sparks directory has no `status.yaml`. There is no state machine. Capture and annotate are fire-and-forget. Spark reflection is always explicitly requested by the human — never auto-detected by agents. No agent tasked with specific work is responsible for deciding when to reflect on sparks.
 
-**Dispositions:** Reflection triages each spark to one type — `vision`, `track`, `initiative`, `tension`, `observation`, `noted`, `dismissed`, or `merged`. The `observation` type bridges a spark to `forge:learn capture` (a noticing about system or agent behavior), exactly as `tension` bridges to `forge:decide create`.
+**Dispositions:** Reflection triages each spark to one type — `vision`, `track`, `initiative`, `tension`, `observation`, `noted`, `dismissed`, or `merged`. The `observation` type bridges a spark to a learning capture (a noticing about system or agent behavior), exactly as `tension` bridges to a decision.
 
 ## Directory structure
 
@@ -582,7 +553,7 @@ Actor names are **project-declared**. Each project defines its naming strategy. 
 
 ### Mid-conversation parameter changes
 
-If the human switches the model or thinking level mid-conversation, the actor's identity parameters change but the conversation (and therefore the actor) continues. The `configurations` list records this: `forge:id` Mode 2 appends a new timestamped entry with the updated model/provider/details. The previous configuration is preserved — to determine what model was running at any transition, find the most recent configuration entry that predates the transition's `at` timestamp. No configuration data is ever overwritten or removed.
+If the human switches the model or thinking level mid-conversation, the actor's identity parameters change but the conversation (and therefore the actor) continues. The `configurations` list records this: a new timestamped entry is appended with the updated model/provider/details. The previous configuration is preserved — to determine what model was running at any transition, find the most recent configuration entry that predates the transition's `at` timestamp. No configuration data is ever overwritten or removed.
 
 ## Reflection
 
@@ -628,7 +599,7 @@ draft → review ⇄ revision → active → promoted / retired
                            reflecting
 ```
 
-- **Draft:** Created via `forge:initiative draft`. Goes through `forge:review` before activation.
+- **Draft:** Created in the initiative draft phase. Goes through the review gate before activation.
 - **Draft → Active:** Human approval of draft review constitutes activation — same convention as milestones. The reviewer or human records the `active` transition after review sign-off.
 - **Active:** Enforced during the forge lifecycle. Evidence accumulates. Definition can be amended.
 - **Promoted:** Hardened into a CLAUDE.md rule. Evidence tracking continues. The rule is the enforcement mechanism; the initiative is the tracking mechanism.
@@ -646,12 +617,12 @@ Existing CLAUDE.md rules become promoted initiatives — they keep their CLAUDE.
 
 Evidence is append-only and event-sourced. Event types: `advance`, `regress`, `exception-proposed`, `exception-approved`, `promoted`, `demoted`, `retired`. Evidence enters the system through two paths:
 
-- **In-band:** Track reflections (knowledge delta lens) → harvested by `forge:snapshot` during terminal transitions
-- **Out-of-band:** `forge:initiative log` for observations outside normal reflection
+- **In-band:** Track reflections (knowledge delta lens) → harvested during terminal transitions
+- **Out-of-band:** the initiative log phase, for observations outside normal reflection
 
 ### Initiative reflection
 
-`forge:initiative reflect` handles initiative reflection as a seventh mode. Unlike single-shot track/proposal/milestone reflection (which lives in `forge:reflect`), initiative reflection is **append-only and repeatable** — each invocation appends a timestamped synthesis entry. The synthesis covers convergence assessment, definition effectiveness, exception assessment, and lifecycle readiness. Every initiative reflection must be followed by `forge:review`.
+Initiative reflection is a seventh mode. Unlike single-shot track/proposal/milestone reflection, initiative reflection is **append-only and repeatable** — each invocation appends a timestamped synthesis entry. The synthesis covers convergence assessment, definition effectiveness, exception assessment, and lifecycle readiness. Every initiative reflection must be followed by a review gate.
 
 ### Review gate
 
@@ -680,9 +651,9 @@ The **performing agent** — the agent who produced the artifact — commits it.
 
 Skills that continue work on an existing artifact after a prior phase verify that the previous phase's bracket is closed before proceeding. The check: read the last transition from status.yaml, check `git log` for a closing commit that corresponds to that transition. If no matching commit exists, warn the human — do not hard-stop, but make the open bracket visible before building on potentially uncommitted state.
 
-**Skills that verify:** forge:plan (after spec), forge:implement (after plan), forge:review (after the producing agent's phase), forge:reflect (after impl_review), forge:complete (after reflection_review), forge:propose (after vision_review).
+**Phases that verify the prior phase:** plan (after spec), implementing (after plan), each review gate (after the producing agent's phase), reflecting (after impl_review), completion (after reflection_review), proposal (after vision_review).
 
-**Skills that don't verify:** forge:envision (starts a new proposal — no prior phase), forge:spec (starts a new track), forge:milestone (starts a new milestone), forge:amend (amendments happen at any time during `active` — no sequential prior phase). Utility skills (forge:id, forge:verify, forge:sync, forge:improve) also skip verification.
+**Phases that don't:** vision (starts a new proposal — no prior phase), spec (starts a new track), milestone draft (starts a new milestone), and amend (amendments happen at any time during `active` — no sequential prior phase).
 
 ## Authoring and registering playbooks
 

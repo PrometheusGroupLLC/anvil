@@ -59,13 +59,13 @@ Feature: Adopt an out-of-engine artifact
   Scenario: a fallback error offers adoption when the artifact is adoptable
     Given an in-memory query adapter with track "20260716T0007_adoptable" in state "plan_review" and spec content "body"
     When begin is called via query adapter with identifier "20260716T0007_adoptable" and session_role "resumer"
-    Then the begin outcome is a ModeNotImplemented error naming "forge:implement"
+    Then the begin outcome is a ModeNotImplemented error for mode "resumer"
     And the begin outcome error message contains "adopt: true"
 
   Scenario: a fallback error does NOT offer adoption for an already-governed artifact
     Given an in-memory query adapter with track "20260716T0008_governed" in state "plan_review" governed by a prior transition
     When begin is called via query adapter with identifier "20260716T0008_governed" and session_role "resumer"
-    Then the begin outcome is a ModeNotImplemented error naming "forge:implement"
+    Then the begin outcome is a ModeNotImplemented error for mode "resumer"
     And the begin outcome error message does not contain "adopt: true"
 
   Scenario: an adoption transition never closes the adopting begin marker

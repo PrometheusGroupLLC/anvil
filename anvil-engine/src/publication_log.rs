@@ -17,8 +17,8 @@
 //!
 //! ## Why an inline writer (not a `foundry-kit-engine` dep)
 //!
-//! anvil does NOT depend on `foundry-kit-engine` (it pulls in only
-//! `foundry-engine-addressing` for the rendezvous record). Adding the whole
+//! anvil does NOT depend on `foundry-kit-engine` (the rendezvous record is
+//! anvil's own — see `crate::engine_addressing`). Adding the whole
 //! kit-engine crate (Bus, EventStore, SQLite, …) just for the JSONL writer is
 //! disproportionate, and `JsonlPublicationLog::append` is keyed on the engine's
 //! own `DomainEvent` struct which anvil's enums are not. lore made the same

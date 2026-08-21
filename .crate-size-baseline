@@ -93,7 +93,8 @@
 # guard teaches people to strip the thing that makes the code readable.
 # anvil-core-hearth sits 38,174 lines under the 50,000 soft cap, so this is the
 # growth ratchet doing its job, not a split trigger.
-anvil-core 41243
+# RAISED 41230 -> 42239 by the 2026-08-20 fix-forward; see that block below.
+anvil-core 42239
 #
 # ── THIRD raise of anvil-core-steps (2026-08-16) ────────────────────────────
 # 45909 -> 46909 (+1000): the step modules for T11 P2/P3 (change-record commit
@@ -127,7 +128,158 @@ anvil-core-steps 46909
 # refused to pre-raise on a later change's behalf. 20927 sits 29,073 lines under
 # the 50,000 soft cap, so the split-before-raise trigger recorded for
 # anvil-core-steps does not reach this row.
-anvil-engine 21569
+#
+# ── deleting the private foundry dependencies (2026-08-20) ──────────────────
+# anvil-engine 19445 -> 20743. MEASURED before and after, against the FINAL tree.
+# It breached: the tolerance was 388 lines and this is +1298.
+#
+# CORRECTION, 2026-08-20 (fix-forward on the shipped change). This row was
+# FIRST RECORDED AS 20716 with an itemisation summing to +1271, under the words
+# "Exact; nothing is unattributed." That was WRONG BY 27 LINES, and the sentence
+# claiming exactness was the worst part of it: the row is the one artefact in
+# this repository whose entire value is arithmetic that can be checked, and a
+# false claim of exactness is what stops the next reader checking it.
+#
+# It passed anyway, which is the second thing worth writing down. 2% of 20716 is
+# a limit of 21130, so the tolerance absorbed the 27 in silence and the script
+# printed `crate-size: OK`. A ratchet with a percentage tolerance cannot detect
+# a mis-stated baseline; only re-measuring can. The error survived a re-take
+# ("an earlier mid-flight measurement of this same change read 20637 and no
+# longer summed — which is the reason the arithmetic is re-taken at the end")
+# because the re-take recomputed the total from the ITEMISATION instead of from
+# the tree, and the itemisation carried the wrong line item.
+#
+# RE-MEASURED with the script's own rule
+# (`find <dir>/src <dir>/tests -name '*.rs' | xargs wc -l`) against pristine
+# `git archive` extractions of both commits, not against a working tree:
+#   9f0046a5  anvil-engine  19445   (matches the previously recorded row)
+#   efce85ed  anvil-engine  20743   (recorded 20716 — WRONG)
+# The miss is one line item: src/kit_bearer.rs is 372 -> 572 = +200, recorded
+# as +173. Every other item reconciles to the line.
+#
+# The lines are code that USED TO LIVE in three private crates anvil depended on
+# by path or by an unpublished version, which together made the workspace
+# unenumerable from a bare clone (`cargo metadata --no-deps` exit 101). They are
+# not new behaviour; they are the same behaviour, now owned here.
+#
+# The arithmetic, so the raise can be argued with rather than trusted:
+#
+#   +481  src/engine_addressing.rs   foundry-engine-addressing, inlined. Anvil
+#                                    used 5 of its items; the singleton module,
+#                                    the identity-check probe branch and four
+#                                    unused builders were NOT carried over.
+#   +579  src/kit_telemetry.rs       foundry-kit-telemetry, inlined. Its 182-line
+#                                    `standard` taxonomy has zero consumers in
+#                                    anvil and was dropped.
+#   +200  src/kit_bearer.rs          the broker MINT path, inlined: two JSON
+#                                    lines over a Unix socket. No crypto — the
+#                                    mint path never parses or verifies a JWT.
+#                                    372 -> 572, measured on both sides. This
+#                                    is the item the original +1271 got wrong.
+#     +1  src/session.rs             NET one line. The broker VERIFIER left (it
+#                                    parses JWTs and checks RS256 signatures, so
+#                                    inlining it would violate the recorded
+#                                    invariant that anvil contains no inline
+#                                    signature logic) and the sealed injection
+#                                    seam arrived, almost exactly cancelling.
+#     +7  src/lib.rs                 ENGINE_VERSION, so the version this binary
+#                                    reports comes from the lib no matter which
+#                                    package compiles main.rs as a bin.
+#    +30  src/main.rs                the verifier-selection arm, the live-arm
+#                                    marker the ship gate probes for, and two
+#                                    call sites.
+#   ─────
+#  +1298  = 481 + 579 + 200 + 1 + 7 + 30, and 20743 - 19445 = 1298. The sum and
+#          the measurement agree. Stated as a reconciliation of two independent
+#          numbers rather than as the word "exact", because the previous version
+#          of this block used that word while being wrong by 27.
+#
+# NOT counted, deliberately: build.rs (+19, the `cargo::rustc-check-cfg` line and
+# its reasoning). The script measures `src/**` + `tests/**`, so a build script is
+# outside the row by construction — stated here because the raw diff shows +1290
+# and the difference would otherwise look like a missing 19 lines.
+#
+# NOT SPLIT. anvil-engine sits 29,257 lines under the 50,000 soft cap, so the
+# split-before-raise trigger recorded above for anvil-core-steps does not reach
+# this row. Raised BY HAND, this row only. `--update-baseline` was NOT run: it
+# rewrites every row and would bank drift no reviewed change made.
+#
+# Worth stating plainly, because the direction is unusual: this raise is the
+# PRICE OF REMOVING A DEPENDENCY, not of adding a feature. A repository a
+# stranger can build is worth 1271 lines, and the alternative on offer — leaving
+# the crates where they were — cost more than lines.
+# ── FIX-FORWARD on the change above (2026-08-20) ────────────────────────────
+# The implementation review of the shipped work found four defects that are
+# fixed in place rather than reverted. Two of them cost lines:
+#
+# anvil-engine 20743 -> 20750 (+7), all of it src/panel.rs (206 -> 213). An
+#   INDENTED block inside a `//!` comment is Markdown for "code", and rustdoc
+#   compiles an unlabelled code block as Rust — so a contract sketch was a
+#   doctest that failed to parse and `cargo test --workspace`, the command
+#   CLAUDE.md documents, exited 101 on a bare clone. The fence is now ```text.
+#   4 of the 7 lines are the comment saying why, so the next person does not
+#   "tidy" the fence away and re-break the documented test command.
+#
+# anvil-core   41230 -> 42239. This one is NOT all this change's, and the split
+#   is the point:
+#     +370  ALREADY over the recorded baseline before this change. anvil-core
+#           measured 41600 at efce85ed against a row of 41230, inside the 2%
+#           tolerance (limit 42054) and therefore invisible. Exactly the
+#           silent-banking the review caught in the anvil-engine row.
+#      +51  anvil-core/tests/workspace_dependency_parity.rs 157 -> 208. It
+#           shipped the SAME defect the review found in its sibling — it
+#           asserted `brine-tests/Cargo.toml` and `kit-build/Cargo.toml` exist,
+#           and the public mirror contains neither, so the mirror's `cargo test`
+#           panicked here too. Found by actually running the reconstructed
+#           export tree rather than by reading. An ABSENT directory is now a
+#           trimmed export and is skipped; a directory PRESENT WITHOUT a
+#           manifest is still a hard panic, because that is a moved manifest
+#           rather than a trimmed one.
+#     +588  THIS change: anvil-core/tests/no_private_path_deps.rs 440 -> 1028.
+#           The guard had three MEASURED bypasses — `path = """…"""` and
+#           `path = '''…'''` (the extractor took the first quote to the next
+#           one, produced an EMPTY string, normalised it to the manifest's own
+#           directory and read "inside the repo"), and `[patch."crates-io"]`
+#           (the check matched a literal, not a normalised key). The lines are a
+#           real TOML string reader, a lexical symlink-follower, an empty-value
+#           floor, an unreadable-declaration floor, and three tests that pin
+#           each closed bypass. About half are the comments recording which
+#           spellings were measured green and what is STILL not covered — the
+#           previous comment claimed the guard "tolerate[s] every form TOML
+#           allows", which is what stopped anyone testing it.
+#   Refusing the raise would mean shipping the bypasses. Raised BY HAND, this
+#   row only; `--update-baseline` was NOT run.
+#
+# anvil-core is now 7,761 lines under the 50,000 soft cap and anvil-engine
+# 29,250, so the split-before-raise trigger recorded above for anvil-core-steps
+# reaches neither row. But anvil-core is the closest crate in the repository to
+# that cap and it has now absorbed 370 lines of drift nobody booked; the next
+# raise of this row should account for its slack explicitly.
+anvil-engine 20750
+#
+# anvil-kit-engine is NEW at 113 lines: the Foundry session verifier and its
+# three error/value mappers, relocated verbatim out of anvil-engine. Its size is
+# the point. A package this small is evidence the verifier was MOVED and not
+# reimplemented — had it been copied and adapted it would be ~150 lines of RS256
+# and PEM parsing instead of a forwarding adapter over the upstream crate.
+#
+# RAISED 113 -> 190 (+77) for tests/minter_parity.rs. Exact and fully
+# attributed: the 77 lines are one test file, three assertions and the comment
+# explaining why they exist. Nothing in src/ changed.
+#
+# The row doubles because the denominator is tiny, not because the crate grew in
+# any way this guard cares about — 190 lines is 49,810 under the soft cap. What
+# the 77 buy is the ONLY check in either workspace that can see both ends of the
+# broker wire protocol at once: `anvil-engine/src/kit_bearer.rs` now carries an
+# INLINED copy of Foundry's kit-broker client (see the anvil-engine block above,
+# "+173 src/kit_bearer.rs"), and this package is the only one that depends on
+# both that copy and `foundry-kit-broker-client`. It compares the protocol
+# version, the audience and the scopes as VALUES, so it has no skip path and
+# cannot degrade into a green no-op.
+#
+# Refusing the raise would mean deleting the test, which is the trade this guard
+# is not for. Raised BY HAND, this row only; `--update-baseline` was NOT run.
+anvil-kit-engine 190
 #
 # ── T1 phase 4, the JoinCoverage wire (2026-08-15) ──────────────────────────
 # anvil-engine-steps 19246 -> 20240 (+994): join_coverage_rpc.rs 967 for 18
@@ -184,8 +336,62 @@ anvil-engine 21569
 # a crate to land one HTTP route would be a large refactor performed under time
 # pressure by whoever happened to breach the number, which is how a guard turns
 # into a hazard of its own.
-anvil-engine-steps 20810
-anvil-mcp 5318
-anvil-mcp-steps 13275
-anvil-test-support 31451
+# anvil-engine-steps +419, raised deliberately for the kit-bearer default-path
+# rung (fix/hook-default-broker-socket): the two stub-broker Given steps, the
+# elapsed-time ceiling check that makes the mint deadline assertable at all, and
+# the doc comments explaining why each fixture is shaped the way it is. Its
+# remaining 2% tolerance was 416 lines, so this landed 3 lines over — recorded
+# rather than absorbed by trimming the reasoning, which is the part that stops
+# the next reader from deleting a fixture whose point is not obvious.
+# Raised only this row, by hand, not via `--update-baseline`.
+#
+# ── the brine-tests workspace split (2026-08-20) ────────────────────────────
+# These two raises are an ACCOUNTING MOVE, not growth. The Brine runners left
+# the product crates so the default workspace stops reaching into the private
+# `brine` sibling (`cargo metadata --no-deps` exited 101 without it — a
+# dev-dependency's manifest is loaded like any other). `tests/brine_runner.rs`
+# and `tests/steps/**` moved from each product crate into its step crate; the
+# script counts `src/**.rs + tests/**.rs`, so the same lines simply changed
+# which row they land on.
+#
+# Measured, both sides of the move:
+#   anvil-engine-steps 21229 -> 23658  (+2429); the relocated tests/ tree that
+#                                      arrived measures 2405 lines
+#   anvil-engine       21569 -> 19445  (-2124), ratcheted DOWN by the script
+#   anvil-mcp-steps    13275 -> 14073   (+798); the relocated tests/ tree that
+#                                      arrived measures  828 lines
+#   anvil-mcp           5318 ->  4489   (-829), ratcheted DOWN by the script
+#
+# Net across all four rows: +274 lines for the whole repository — stated so the
+# raise can be argued with rather than trusted. That remainder is the repo-root
+# resolution fix applied across ~30 step-module sites, plus two new guard tests
+# in anvil-core, minus the step-registration block deleted from anvil-core's old
+# runner. The resolution fix was not optional: the runners now sit one directory
+# deeper, so a fixed `parent()` hop stopped reaching the repository root and
+# resolved to `brine-tests/` instead, where the feature globs matched NOTHING —
+# and a run with zero scenarios reports success. The 2389/733 baselines are what
+# caught it.
+#
+# Raised BY HAND, these two rows only. `--update-baseline` was NOT run: it
+# rewrites every row and would bank drift no reviewed change made. Neither crate
+# is near the 50,000 soft cap (anvil-engine-steps sits 26,342 under it,
+# anvil-mcp-steps 35,927 under), so the split-before-raise trigger recorded
+# above for anvil-core-steps does not reach either row.
+anvil-engine-steps 23658
+anvil-mcp 4489
+anvil-mcp-steps 14073
+# anvil-test-support +702, raised deliberately for the kit-bearer default-path
+# rung (fix/hook-default-broker-socket). Two things landed in this crate and
+# neither could go elsewhere:
+#   * `hooks_cli.rs` — the contained `anvil-hooks` spawn helper AND the repo's
+#     first stub Foundry broker (a UDS listener speaking the client's framing,
+#     including the accepts-and-never-answers mode the mint deadline exists to
+#     survive). It lives here because BOTH the engine steps and the core steps
+#     spawn `anvil-hooks`, and a second copy of a credential control is how a
+#     control drifts into decoration.
+#   * The collapse itself REMOVED 21 lines from `engine.rs`, so the raise is the
+#     new module's net size, not accumulated slack.
+# Raised only this row, by hand, rather than `--update-baseline`, which would
+# have silently re-recorded every other crate's drift alongside it.
+anvil-test-support 32153
 anvil-core-hearth 11826

@@ -1,7 +1,7 @@
 Feature: execution_route discriminator on describe actions
   Each ActionInfo returned by describe(identifier) carries a
   execution_route value — "engine" if that action is executed by
-  the engine today, or "fallback:forge:<skill>" otherwise.
+  the engine, or "none" if no action exists for that role on that subject.
 
   Scenario: Track in spec state has the doer spec_review action as engine
     Given a describe handler with instances:

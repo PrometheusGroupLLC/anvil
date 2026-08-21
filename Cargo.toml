@@ -1,15 +1,31 @@
 [workspace]
+# THE DEFAULT WORKSPACE CONTAINS ONLY THE PRODUCT CRATES.
+#
+# Cargo loads the manifest of every path dependency reachable from a workspace
+# member — including dev-dependencies, and including OPTIONAL dependencies that
+# are switched off. "It's only a dev-dep" and "it's optional" buy nothing. So
+# while the Brine step crates were members, `cargo metadata --no-deps` on a
+# machine without the private `brine` sibling exited 101: anvil's workspace
+# could not even be ENUMERATED, let alone built.
+#
+# The Brine runners therefore live in the separate `brine-tests/` workspace.
+# That is workspace MEMBERSHIP, not duplication, so it carries no drift risk —
+# and it keeps `cargo build` from ever loading brine. Tests still run normally
+# in this repo (see CLAUDE.md for the commands); they are simply not part of a
+# public export until brine itself is public, at which point the export can
+# include `brine-tests/` and the split resolves itself.
 members = [
     "anvil-core",
     "anvil-core-hearth",
     "anvil-engine",
     "anvil-mcp",
-    "anvil-test-support",
-    "anvil-core-steps",
-    "anvil-engine-steps",
-    "anvil-mcp-steps",
-    "vendor/foundry-engine-addressing",
-    "vendor/foundry-kit-telemetry",
+]
+exclude = [
+    "brine-tests",
+    # Same reason, different private sibling: `kit-build/anvil-kit-engine` is
+    # the ONLY crate that depends on `foundry-kit-broker-client`, and it is
+    # excluded so a bare clone never loads that manifest. See kit-build/Cargo.toml.
+    "kit-build",
 ]
 resolver = "2"
 

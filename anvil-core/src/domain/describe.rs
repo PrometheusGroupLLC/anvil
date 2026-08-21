@@ -44,8 +44,8 @@ pub struct TransitionInfo {
 pub struct AvailableAction {
     pub action: String,
     pub required_role: String,
-    /// "engine" if this action is executed by begin(identifier); otherwise
-    /// "fallback:forge:<skill>" naming the forge skill to invoke instead.
+    /// "engine" if this action is executed by begin(identifier); "none" if no
+    /// action exists for this role on this subject.
     pub execution_route: String,
 }
 

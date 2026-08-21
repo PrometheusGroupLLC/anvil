@@ -157,7 +157,7 @@ impl HookAdapter for ClaudeCodeAdapter {
             "hooks": [ {
                 "type": "command",
                 "command": self.harness().subagent_command_with_source(spec),
-                "timeout": spec.timeout_ms,
+                "timeout": spec.turn_timeout_ms,
             } ],
         }));
         set_pretool(&mut settings, entries);
@@ -170,7 +170,7 @@ impl HookAdapter for ClaudeCodeAdapter {
             "hooks": [ {
                 "type": "command",
                 "command": self.harness().turn_command_with_source(spec),
-                "timeout": spec.timeout_ms,
+                "timeout": spec.turn_timeout_ms,
             } ],
         }));
         set_event(&mut settings, "UserPromptSubmit", turn_entries);
@@ -280,6 +280,22 @@ pub fn managed_turn_count(existing: &str) -> usize {
         .and_then(Value::as_array)
         .map(|arr| arr.iter().filter(|e| is_managed_entry(e)).count())
         .unwrap_or(0)
+}
+
+/// The `timeout` of the single anvil-managed UserPromptSubmit (turn) hook, or
+/// `None`. Separate from [`managed_pretool_detail`], which reports the GATE
+/// entry's timeout — the two are deliberately different numbers and an assertion
+/// that could only see one of them would not notice them being re-coupled.
+pub fn managed_turn_timeout(existing: &str) -> Option<u64> {
+    let settings = parse_settings(existing).ok()?;
+    let entry = settings
+        .get("hooks")?
+        .get("UserPromptSubmit")?
+        .as_array()?
+        .iter()
+        .find(|e| is_managed_entry(e))?;
+    let cmd_entry = entry.get("hooks")?.as_array()?.first()?;
+    cmd_entry.get("timeout")?.as_u64()
 }
 
 /// The `command` of the single anvil-managed UserPromptSubmit (turn) hook, or

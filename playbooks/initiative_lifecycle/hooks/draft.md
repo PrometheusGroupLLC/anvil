@@ -62,7 +62,7 @@ Create a new initiative — a cross-cutting implementation expectation the codeb
    - `to_state`: `draft`
    - `actor_role`: `draft`
 
-   Pass `actor_name` + runtime `actor_*` explicitly, registering your identity via `forge:id` first if needed. Do NOT write to status.yaml, registry files, or projection files directly — the MCP tool handles all deterministic bookkeeping.
+   Pass `actor_name` + runtime `actor_*` explicitly. Do NOT write to status.yaml, registry files, or projection files directly — the MCP tool handles all deterministic bookkeeping.
 
 5. **Notify the human** that the initiative is ready for review. Provide a summary and file path. Human approval gates the commit.
 

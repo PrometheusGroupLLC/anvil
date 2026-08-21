@@ -26,8 +26,15 @@
 //!
 //! # The contract is the host's
 //!
-//!     key    foundry:playbooks
-//!     value  {"version":1,"playbooks":[{"id","title","group","state","meta"?}]}
+//! (Fenced as `text`. An INDENTED block in a `//!` comment is Markdown for "code",
+//! and rustdoc compiles a code block with no language as Rust — so this sketch was
+//! a doctest that failed to parse, and `cargo test --workspace` exited 101 on a
+//! bare clone until the fence was added. Nothing below it changed.)
+//!
+//! ```text
+//! key    foundry:playbooks
+//! value  {"version":1,"playbooks":[{"id","title","group","state","meta"?}]}
+//! ```
 
 use serde::Serialize;
 

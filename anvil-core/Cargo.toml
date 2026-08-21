@@ -21,13 +21,16 @@ sha2 = { workspace = true }
 tokio = { workspace = true }
 
 [dev-dependencies]
-anvil-core-steps = { path = "../anvil-core-steps" }
-anvil-test-support = { path = "../anvil-test-support" }
+# `anvil-core-steps` and `anvil-test-support` are deliberately absent: both
+# depend on the private `brine` sibling, and cargo loads a dev-dependency's
+# manifest like any other, so naming them here dragged brine into the default
+# workspace. The Brine runner for this crate's features now lives at
+# `brine-tests/anvil-core-steps/tests/brine_runner.rs`; the features themselves
+# stay here in `anvil-core/features/`.
+#
+# `tempfile` remains — the non-Brine test targets in `tests/` (hearth_lint,
+# playbook_integrity, ...) use it and are unaffected by the split.
 tempfile = "3"
-
-[[test]]
-name = "brine_runner"
-harness = false
 
 [lints]
 workspace = true

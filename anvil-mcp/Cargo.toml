@@ -15,16 +15,13 @@ serde_yaml = { workspace = true }
 tokio = { workspace = true }
 tonic = { workspace = true }
 
-[dev-dependencies]
-anvil-mcp-steps = { path = "../anvil-mcp-steps" }
-anvil-engine = { path = "../anvil-engine" }
-anvil-test-support = { path = "../anvil-test-support" }
-brine-runner-rust = { path = "../../brine/runners/implementations/rust" }
-tempfile = "3"
-
-[[test]]
-name = "brine_runner"
-harness = false
+# No `[dev-dependencies]`: they named `anvil-mcp-steps`, `anvil-test-support`
+# and `brine-runner-rust` — a direct path dependency on the private `brine`
+# sibling. Cargo loads those manifests whether or not anything is being tested,
+# which is what made `cargo metadata` exit 101 on a machine without brine. The
+# Brine runner for this crate's features now lives at
+# `brine-tests/anvil-mcp-steps/tests/brine_runner.rs`; the features themselves
+# stay here in `anvil-mcp/features/`.
 
 [lints]
 workspace = true

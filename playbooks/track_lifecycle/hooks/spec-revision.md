@@ -8,7 +8,7 @@ Instructions for revising a track specification in response to review findings. 
 
 **Carry `actor_name` forward.** On your first `checkin` of this conversation, the engine returns a canonical `actor_name` (or echoes the one you supplied). Hold that name in conversation memory and pass it explicitly on every subsequent `begin` or `complete` MCP call — those tools require a non-empty `actor_name` on every call and reject missing values with `actor_name_required`.
 
-**Re-detect runtime `actor_*` attributes per call.** The runtime fields (`actor_type`, `actor_model`, `actor_provider`, plus optional `actor_context_window` / `actor_sdk_version` / `actor_entrypoint`) come from your current environment — not from any prior-call state. The `forge:id` skill's env-detection pattern is the normative reference: `DEFAULT_LLM_MODEL`, `CLAUDE_AGENT_SDK_VERSION`, `CLAUDE_CODE_ENTRYPOINT`, and the provider-appropriate context-window value derived from your model.
+**Re-detect runtime `actor_*` attributes per call.** The runtime fields (`actor_type`, `actor_model`, `actor_provider`, plus optional `actor_context_window` / `actor_sdk_version` / `actor_entrypoint`) come from your current environment — not from any prior-call state. Detect them from the environment: `DEFAULT_LLM_MODEL`, `CLAUDE_AGENT_SDK_VERSION`, `CLAUDE_CODE_ENTRYPOINT`, and the provider-appropriate context-window value derived from your model.
 
 Do not rely on any prior-call state to populate identity. Every `begin`/`complete` call carries its own explicit `actor_*` set; the engine does not infer them from a prior `checkin`.
 

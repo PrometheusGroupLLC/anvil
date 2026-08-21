@@ -8,15 +8,16 @@
 # at once, so peak build memory tracks the size of the largest crate, not the workspace.
 # Measured across the fleet on 2026-07-30:
 #
-#   sibling crate A       169,616 lines   OOMs at 20-30 GB — repeatedly froze the
-#                                         build machine and took its CI agent with it
-#   sibling crate B       108,078 lines   approaching
-#   anvil-test-support     83,812 lines   builds fine today
+#   accumulate-test-support   169,616 lines   OOMs at 20-30 GB — froze this box 4x in
+#                                             one day, killed the OrbStack VM and took
+#                                             Concourse + its tunnel down with it
+#   temper-test-support       108,078 lines   approaching
+#   anvil-test-support         83,812 lines   builds fine today
 #
-# The cliff is between 83k and 167k. Nothing announced the crossing: sibling crate A
-# tripled in ONE month (36,912 -> 130,358 lines, May -> June) one track at a time, and
-# the first signal anyone got was the machine freezing in July. A check like this would
-# have caught it in May, when the fix was a morning's work.
+# The cliff is between 83k and 167k. Nothing announced the crossing: accumulate-test-
+# support tripled in ONE month (36,912 -> 130,358 lines, May -> June) one track at a
+# time, and the first signal anyone got was the machine freezing in July. A check like
+# this would have caught it in May, when the fix was a morning's work.
 #
 # WHY A RATCHET AND NOT A CAP
 # ---------------------------
@@ -37,7 +38,7 @@
 # USAGE
 #   scripts/check-crate-size.sh                    # check (CI mode; non-zero on fail)
 #   scripts/check-crate-size.sh --update-baseline  # re-record after a deliberate change
-#   scripts/check-crate-size.sh --root ../another-workspace
+#   scripts/check-crate-size.sh --root ~/Development/temper
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -114,7 +115,7 @@ while read -r crate n dir; do
     fail=1
   elif (( n > limit )); then
     echo "  FAIL $crate: $n lines exceeds its baseline $base (+${TOLERANCE_PCT}% = $limit)."
-    echo "       Growth here is how sibling crate A went 36k -> 130k in one month"
+    echo "       Growth here is how accumulate-test-support went 36k -> 130k in one month"
     echo "       and started freezing the machine. Split it, or run --update-baseline and"
     echo "       commit the new number as a deliberate decision."
     fail=1
@@ -128,7 +129,7 @@ while read -r crate n dir; do
   fi
   # GENERATED-CODE EXPANSION — the term line count cannot see.
   #
-  # Measured 2026-07-31: sibling crate A was 168k hand-written lines and needed
+  # Measured 2026-07-31: accumulate-test-support was 168k hand-written lines and needed
   # 34-41 GB of rustc. Line count said "too big", which was right by accident. The
   # actual driver was `tonic::include_proto!`, which PASTES the generated module into
   # every call site: 24,280 generated lines x 112 call sites = ~2.74 MILLION lines, and

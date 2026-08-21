@@ -6,7 +6,9 @@
 //! report instead of escaping the startup path.
 
 use anvil_core::domain::hooks::installer::{self, HarnessOutcome, HarnessReport};
-use anvil_core::domain::hooks::{Harness, InstallSpec, DEFAULT_GATE_COMMAND, DEFAULT_TURN_COMMAND};
+use anvil_core::domain::hooks::{
+    Harness, InstallSpec, DEFAULT_GATE_COMMAND, DEFAULT_TURN_COMMAND, DEFAULT_TURN_TIMEOUT_MS,
+};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 
@@ -57,6 +59,12 @@ pub fn self_install_hooks(
         let spec = InstallSpec {
             command: DEFAULT_GATE_COMMAND.to_string(),
             timeout_ms: 5000,
+            // The route turn makes model calls and was measured at 8.5-9.5s; the
+            // gate does not. This is the value the engine's own startup self-install
+            // writes into every harness config, so it is what a hand-edit is
+            // OVERWRITTEN with on the next restart — the source of truth is here,
+            // not in the file.
+            turn_timeout_ms: DEFAULT_TURN_TIMEOUT_MS,
             turn_command: DEFAULT_TURN_COMMAND.to_string(),
             // Hooks-only startup path: with_mcp is false below, so this is never
             // written to any harness MCP config.

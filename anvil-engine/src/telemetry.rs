@@ -1,5 +1,5 @@
 //! `anvil-engine::telemetry` — anvil's **content-free** runtime telemetry,
-//! emitted through the cross-kit [`foundry_kit_telemetry`] contract as kit_id
+//! emitted through the cross-kit [`crate::kit_telemetry`] contract as kit_id
 //! **`"anvil"`**.
 //!
 //! The fleet-telemetry loop (emitter → broker → relay → Cloud Logging → Temper)
@@ -12,7 +12,7 @@
 //! ## Privacy invariant (do NOT violate)
 //!
 //! Every field name AND every categorical label is a **safe token**
-//! (`[A-Za-z0-9_.:-]`, ≤64) — the underlying [`foundry_kit_telemetry`] crate
+//! (`[A-Za-z0-9_.:-]`, ≤64) — the underlying [`crate::kit_telemetry`] module
 //! structurally rejects anything else. We emit only enumerable categorical labels
 //! (`outcome`, `target_tier`, `reason`, `close_reason`,
 //! `dominant_fallback_used`) plus numeric measures (`confidence`, `latency_ms`,
@@ -51,10 +51,10 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 // Re-export the pieces the Brine steps (and any downstream reader) need, so the
-// step crate can drive + validate egress without taking the git dep directly.
-pub use foundry_kit_telemetry::{
-    standard, validate_envelope, Envelope, MetricValue, Telemetry, TelemetryConfig, TelemetryError,
-    Window,
+// step crate can drive + validate egress through this module rather than
+// reaching into `crate::kit_telemetry` itself.
+pub use crate::kit_telemetry::{
+    validate_envelope, Envelope, MetricValue, Telemetry, TelemetryConfig, TelemetryError, Window,
 };
 
 /// The kit id anvil reports under (a safe kebab-case token).

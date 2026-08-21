@@ -134,7 +134,7 @@ impl HookAdapter for KilnAdapter {
         let turn_command = Harness::Kiln.turn_command_with_source(spec);
         let mut turn = event_without_managed(&doc, USER_PROMPT_SUBMIT);
         turn.push(json!({
-            "hooks": [ managed_command(&turn_command, spec.timeout_ms) ],
+            "hooks": [ managed_command(&turn_command, spec.turn_timeout_ms) ],
         }));
         set_event(&mut doc, USER_PROMPT_SUBMIT, turn);
 

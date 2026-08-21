@@ -13,7 +13,7 @@ Feature: Begin Error Taxonomy at the gRPC Seam
     When the begin RPC is called with identifier "20260414T0405_review_spec_strand" and session_role ""
     Then the begin RPC returns gRPC status "UNAUTHENTICATED"
 
-  Scenario: ModeNotImplemented maps to UNIMPLEMENTED and names forge:implement
+  Scenario: ModeNotImplemented maps to UNIMPLEMENTED and names the mode
     Given a hearth directory with the following structure:
       | path                                              | state         |
       | proposals/20260411T2021_anvil_workflow_engine/     | active        |
@@ -22,7 +22,7 @@ Feature: Begin Error Taxonomy at the gRPC Seam
     And the engine is started with that hearth
     When the begin RPC is called with identifier "20260414T0405_review_spec_strand" and session_role "resumer"
     Then the begin RPC returns gRPC status "UNIMPLEMENTED"
-    And the begin RPC error message contains "forge:implement"
+    And the begin RPC error message contains "resumer"
 
   Scenario: RoleStateMismatch maps to INVALID_ARGUMENT
     Given a hearth directory with the following structure:
@@ -45,7 +45,7 @@ Feature: Begin Error Taxonomy at the gRPC Seam
     Then the begin RPC returns gRPC status "FAILED_PRECONDITION"
     And the begin RPC error message contains "spec_not_ready_for_review"
 
-  Scenario: StateNotReviewable maps to FAILED_PRECONDITION and names forge:review
+  Scenario: StateNotReviewable maps to FAILED_PRECONDITION and names the kind and state
     Given a hearth directory with the following structure:
       | path                                              | state  | kind     |
       | glossaries/20260411T2021_delivery_glossary/        | active | glossary |
@@ -53,7 +53,7 @@ Feature: Begin Error Taxonomy at the gRPC Seam
     And the engine is started with that hearth
     When the begin RPC is called with identifier "20260411T2021_delivery_glossary" and session_role "reviewer"
     Then the begin RPC returns gRPC status "FAILED_PRECONDITION"
-    And the begin RPC error message contains "forge:review"
+    And the begin RPC error message contains "is not engine-supported"
 
   Scenario: NotFound maps to NOT_FOUND
     Given a hearth directory with the following structure:

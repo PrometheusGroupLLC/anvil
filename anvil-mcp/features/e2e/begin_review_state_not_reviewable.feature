@@ -1,8 +1,8 @@
 Feature: Begin Review on an engine-driven proposal non-gate state End-to-End
   proposal is now engine-driven (register:free lifecycle). A reviewer begin(identifier)
-  on a proposal in a non-review-gate state (draft) no longer falls back to forge:review;
+  on a proposal in a non-review-gate state (draft) no longer falls back to an external skill;
   the engine resolves the proposal machine and returns the current state with no
-  reviewer-actionable context. (The forge:review fallback now applies only to kinds
+  reviewer-actionable context. (The refusal now applies only to kinds
   still outside engine support, e.g. learning.)
 
   Scenario: Reviewer begin on engine-driven proposal-in-draft returns the state

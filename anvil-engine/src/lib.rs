@@ -25,11 +25,18 @@ pub fn service_rpc_names() -> Result<Vec<String>, String> {
     Ok(service.method.iter().map(|m| m.name().to_string()).collect())
 }
 
+/// The engine's own version. Read through the LIB rather than `env!` in the
+/// binary, so the reported version stays anvil-engine's no matter which package
+/// compiles `src/main.rs` as a bin target (see `kit-build/`).
+pub const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 pub mod abstention_ledger;
 pub mod claimed_evidence;
 pub mod command_seam;
+pub mod engine_addressing;
 pub mod engine_flags;
 pub mod kit_bearer;
+pub mod kit_telemetry;
 pub mod panel;
 pub mod kiln_router;
 pub mod semantic_route;

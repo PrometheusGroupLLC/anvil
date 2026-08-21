@@ -26,7 +26,7 @@ Feature: Begin resumer serves doer hooks
   Scenario Outline: resumer begin on non-doer state keeps the existing fallback
     Given an in-memory query adapter with track "<track>" in state "<state>" and artifact file "<artifact_file>" content "ARTIFACT-BODY"
     When begin is called via query adapter with identifier "<track>" and session_role "resumer"
-    Then the begin outcome is a ModeNotImplemented error naming "forge:implement"
+    Then the begin outcome is a ModeNotImplemented error for mode "resumer"
 
     Examples:
       | track                        | state             | artifact_file         |

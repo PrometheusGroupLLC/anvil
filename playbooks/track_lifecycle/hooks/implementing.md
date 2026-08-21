@@ -46,9 +46,9 @@ When you notice something about system or agent behavior mid-implementation,
 capture it without derailing flow:
 
 - Tangential noticing (a surprising convention, a confusing error) — fire a
-  `forge:spark` with the `observation` disposition in mind; triage happens later.
+  capture a spark with the `observation` disposition in mind; triage happens later.
 - The observation is the point of the current task — capture it directly with
-  `forge:learn capture`.
+  a learning capture.
 
 Keep the primary task moving; capture is low-ceremony, not a context switch.
 

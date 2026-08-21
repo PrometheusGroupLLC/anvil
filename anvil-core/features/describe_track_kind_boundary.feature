@@ -72,5 +72,5 @@ Feature: Scope boundary — untouched consumers unchanged for track kind
       | spec     | spec     | engine                  |
       | spec_review | reviewer | engine               |
       | plan     | plan      | engine                  |
-      | plan_review | plan  | fallback:forge:review   |
+      | plan_review | plan  | engine                  |
       | implementing | implement | engine               |

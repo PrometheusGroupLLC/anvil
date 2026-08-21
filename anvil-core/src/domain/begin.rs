@@ -74,11 +74,9 @@ pub enum BeginError {
     /// role available.
     SessionRequired,
     /// The current session role is recognized but its identifier-mode is
-    /// not yet implemented in the engine. Names the fallback skill the
-    /// agent should invoke instead (e.g., resumer → `forge:implement`).
+    /// not yet implemented in the engine.
     ModeNotImplemented {
         mode: String,
-        fallback_skill: String,
         /// Whether ADOPTION is a genuine remedy for THIS artifact — computed at
         /// construction (a registered machine exists for the kind AND the
         /// artifact would pass the governed check). Only then does the message
@@ -94,12 +92,10 @@ pub enum BeginError {
         state: String,
     },
     /// The (artifact_kind, state, role) combination is reviewable in
-    /// principle but not yet engine-supported. Names the fallback skill
-    /// the agent should invoke instead.
+    /// principle but not yet engine-supported.
     StateNotReviewable {
         artifact_kind: String,
         state: String,
-        fallback_skill: String,
         /// Whether ADOPTION is a genuine remedy for THIS artifact — see
         /// `ModeNotImplemented::adoptable` (Finding 4).
         adoptable: bool,
@@ -173,26 +169,21 @@ impl fmt::Display for BeginError {
                 f,
                 "No active session. Call checkin first to register your identity and intent."
             ),
-            BeginError::ModeNotImplemented {
-                mode,
-                fallback_skill,
-                adoptable,
-            } => {
+            BeginError::ModeNotImplemented { mode, adoptable } => {
                 if *adoptable {
                     write!(
                         f,
-                        "Mode '{}' on identifier is not yet engine-supported. Invoke '{}' \
-                         instead. If this artifact was authored outside the engine, call \
-                         begin(identifier, adopt: true) to take it back to its initial state \
-                         and drive it through every phase and review gate properly.",
-                        mode, fallback_skill
+                        "Mode '{}' on identifier is not yet engine-supported. If this artifact \
+                         was authored outside the engine, call begin(identifier, adopt: true) to \
+                         take it back to its initial state and drive it through every phase and \
+                         review gate properly.",
+                        mode
                     )
                 } else {
                     write!(
                         f,
-                        "Mode '{}' on identifier is not yet engine-supported. Invoke '{}' \
-                         instead.",
-                        mode, fallback_skill
+                        "Mode '{}' on identifier is not yet engine-supported.",
+                        mode
                     )
                 }
             }
@@ -208,23 +199,22 @@ impl fmt::Display for BeginError {
             BeginError::StateNotReviewable {
                 artifact_kind,
                 state,
-                fallback_skill,
                 adoptable,
             } => {
                 if *adoptable {
                     write!(
                         f,
-                        "({}, {}, reviewer) is not engine-supported. Invoke '{}' instead. \
-                         If this artifact was authored outside the engine, call \
-                         begin(identifier, adopt: true) to take it back to its initial state \
-                         and drive it through every phase and review gate properly.",
-                        artifact_kind, state, fallback_skill
+                        "({}, {}, reviewer) is not engine-supported. If this artifact was \
+                         authored outside the engine, call begin(identifier, adopt: true) to take \
+                         it back to its initial state and drive it through every phase and review \
+                         gate properly.",
+                        artifact_kind, state
                     )
                 } else {
                     write!(
                         f,
-                        "({}, {}, reviewer) is not engine-supported. Invoke '{}' instead.",
-                        artifact_kind, state, fallback_skill
+                        "({}, {}, reviewer) is not engine-supported.",
+                        artifact_kind, state
                     )
                 }
             }
@@ -287,8 +277,8 @@ impl fmt::Display for BeginError {
                 "spec_not_ready_for_review: this track is still in `spec`. The doer must \
                  call `complete` (no satisfaction) to advance it to `spec_review` before \
                  a reviewer can enter. If you are the doer resuming work, invoke \
-                 `begin(identifier)` as a resumer once that mode ships, or use \
-                 `forge:spec` in the interim."
+                 `begin(identifier)` as a resumer and the engine will serve the spec \
+                 doer context."
             ),
         }
     }
@@ -1232,8 +1222,8 @@ fn track_doer_resume_state(state: &str) -> bool {
         // `spec` is a doer-resume state so an ADOPTED track (reset to its
         // initial `spec` state) is resumable if its adopting session is
         // interrupted: begin(identifier, resumer) re-serves the spec doer hook
-        // and re-opens the begin, instead of stranding on the retired
-        // `forge:spec` fallback (Finding 5). A freshly-created spec track is
+        // and re-opens the begin, instead of stranding on a dead external
+        // fallback (Finding 5). A freshly-created spec track is
         // equally resumable — the spec doer just continues authoring.
         "spec"
             | "plan"
@@ -1763,16 +1753,15 @@ fn handle_review(
     if kind != "track" {
         // An engine-driven (machine-resolvable) playbook can be RESUMED by the
         // engine itself: re-read the current state and re-enter the doer hook.
-        // The old blanket `resumer → forge:implement` rejection was wrong on
-        // both counts — `forge:implement` is not a real skill, and engine kinds
-        // need no forge fallback. Resumer therefore maps to the doer context.
+        // The old blanket resumer rejection named a skill that did not exist,
+        // and engine-driven kinds need no external fallback at all. Resumer
+        // therefore maps to the doer context.
         let Some(machine) = registry.machine_for(&kind) else {
             // No registered machine ⇒ adoption cannot resolve an initial state
             // either, so it is not a genuine remedy here.
             return Err(BeginError::StateNotReviewable {
                 artifact_kind: kind,
                 state,
-                fallback_skill: "forge:review".to_string(),
                 adoptable: false,
             });
         };
@@ -1785,7 +1774,6 @@ fn handle_review(
                 return Err(BeginError::StateNotReviewable {
                     artifact_kind: kind,
                     state,
-                    fallback_skill: "forge:review".to_string(),
                     adoptable,
                 });
             }
@@ -1861,7 +1849,6 @@ fn handle_review(
             let adoptable = artifact_is_adoptable(query, registry, &request.identifier, "track");
             return Err(BeginError::ModeNotImplemented {
                 mode: "resumer".to_string(),
-                fallback_skill: "forge:implement".to_string(),
                 adoptable,
             });
         }
@@ -1913,7 +1900,6 @@ fn handle_review(
         return Err(BeginError::StateNotReviewable {
             artifact_kind: "track".to_string(),
             state,
-            fallback_skill: "forge:review".to_string(),
             adoptable,
         });
     }
@@ -1923,7 +1909,6 @@ fn handle_review(
         return Err(BeginError::StateNotReviewable {
             artifact_kind: "track".to_string(),
             state,
-            fallback_skill: "forge:review".to_string(),
             adoptable,
         });
     };

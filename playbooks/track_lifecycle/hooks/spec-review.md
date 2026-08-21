@@ -29,7 +29,7 @@ Read ALL relevant artifacts: the artifact being reviewed, all prior review docum
 
 ## Actor identity and transition
 
-Before your first status transition, register yourself via `forge:id`. If already registered in the target `status.yaml`'s actors table, skip. The review transition is engine-driven: you entered this state by calling `begin(identifier: <artifact_path>)` with a reviewer role, which delivered this guidance. After writing your review, record the transition by calling `complete` with the appropriate `satisfaction`:
+The review transition is engine-driven: you entered this state by calling `begin(identifier: <artifact_path>)` with a reviewer role, which delivered this guidance. After writing your review, record the transition by calling `complete` with the appropriate `satisfaction`:
 
 - `complete(artifact_path, satisfaction: "satisfied", actor_*)` — accept and advance to the next phase.
 - `complete(artifact_path, satisfaction: "full_revision", actor_*)` — send the artifact back for revision.

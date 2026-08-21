@@ -251,7 +251,7 @@ fn managed_route_entry(spec: &InstallSpec) -> Value {
         "hooks": [{
             "type": "command",
             "command": Harness::Codex.turn_command_with_source(spec),
-            "timeout": timeout_secs(spec),
+            "timeout": turn_timeout_secs(spec),
         }],
     })
 }
@@ -355,6 +355,13 @@ impl HookAdapter for CodexAdapter {
 /// rounding up so a sub-second timeout still yields at least 1 second.
 fn timeout_secs(spec: &InstallSpec) -> u64 {
     spec.timeout_ms.div_ceil(1000).max(1)
+}
+
+/// The ROUTE-TURN entry's timeout in codex's seconds. Separate from
+/// [`timeout_secs`] because the route turn makes model calls and the gate does
+/// not; see [`InstallSpec::turn_timeout_ms`].
+fn turn_timeout_secs(spec: &InstallSpec) -> u64 {
+    spec.turn_timeout_ms.div_ceil(1000).max(1)
 }
 
 /// The count of anvil-managed UserPromptSubmit (route) entries — proves the route

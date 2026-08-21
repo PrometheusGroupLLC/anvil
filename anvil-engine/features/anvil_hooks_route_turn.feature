@@ -242,6 +242,36 @@ Feature: anvil-hooks route-turn ships each user turn into the engine route RPC
     Then the anvil-hooks route-turn command exits 0
     And the delivery log records outcome "engine_timeout"
 
+  # THE CREDENTIAL STEP MUST NOT BE ABLE TO EAT THE TURN.
+  #
+  # The bearer is resolved INSIDE the route turn's budget (ROUTE_TURN_TIMEOUT_MS,
+  # now 90000ms), against a turn measured end-to-end at 10.5s — of which roughly
+  # 5.9s is the engine's own Route and 4.6s the hook's router call, the two-Kiln-
+  # call defect tracked separately. The broker client bounds only its connect (5s)
+  # and reads its two responses unbounded, so a broker that accepts and never
+  # answers would spend the entire turn — and the turn would be recorded as
+  # engine_timeout, blaming the engine for a broker's silence. That is the same
+  # shape as the outage this hook already paid for once: a real cause hidden
+  # behind a deadline that named the wrong thing.
+  #
+  # `guidance_produced` is chosen because that ONE literal carries both halves:
+  # guidance was delivered, so the deadline fired and the turn continued
+  # unattached; and the outcome is not engine_timeout, so the budget was never
+  # consumed. A weaker assertion on either half alone is satisfiable by the
+  # defect — a turn can deliver nothing and still not time out, and a turn can
+  # time out having delivered nothing.
+  #
+  # Removing the bearer's own tokio::time::timeout must turn this red.
+  Scenario: a route turn against a silent broker still delivers
+    Given a route hearth with one unrestricted driven machine kind "daily_recap" trigger "daily recap"
+    And a broker that accepts and never answers sits at the default path in the scenario HOME
+    And the kiln router HTTP stub returns verdict kind "daily_recap"
+    And the engine is started with that hearth
+    When anvil-hooks route-turn runs with message "daily recap" against that engine
+    Then the anvil-hooks route-turn command exits 0
+    And the anvil-hooks route-turn output contains "daily_recap"
+    And the delivery log records outcome "guidance_produced"
+
 
   # continuation_recognition phase 5 — the rejection reason.
   #

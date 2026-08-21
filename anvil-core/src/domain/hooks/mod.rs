@@ -69,6 +69,16 @@ pub const DEFAULT_GATE_COMMAND: &str = "anvil-hooks gate-check";
 /// injected back to the agent.
 pub const DEFAULT_TURN_COMMAND: &str = "anvil-hooks route-turn";
 
+/// The default ROUTE-TURN hook timeout in milliseconds, installed into every
+/// harness that renders a route-turn entry.
+///
+/// This must stay STRICTLY GREATER than `anvil-hooks`' own `ROUTE_TURN_TIMEOUT_MS`
+/// (90000) so the binary's deadline fires first and LOGS the timeout, instead of the
+/// harness killing the process and logging nothing. See
+/// [`InstallSpec::turn_timeout_ms`] for why an inverted pair is worse than a short
+/// one.
+pub const DEFAULT_TURN_TIMEOUT_MS: u64 = 100_000;
+
 /// A plugin/artifact FILE an adapter installs beside (or instead of) its config
 /// transform — for harnesses whose per-turn hook is a separate artifact, not a
 /// config-content edit (grok's `~/.grok/plugins/<p>/` plugin, opencode's
@@ -243,8 +253,28 @@ impl Harness {
 pub struct InstallSpec {
     /// The runtime gate command the native hook invokes (e.g. `anvil-hooks gate-check`).
     pub command: String,
-    /// The hook timeout in milliseconds.
+    /// The GATE hook's timeout in milliseconds. `gate-check` is a fast local
+    /// resolution with no model call, so this stays small: a hung gate blocks a
+    /// file edit, and the user should find out quickly.
     pub timeout_ms: u64,
+    /// The ROUTE-TURN hook's timeout in milliseconds — deliberately separate from
+    /// [`Self::timeout_ms`], because the two hooks have nothing in common but their
+    /// installer.
+    ///
+    /// A route turn makes model calls and was measured end-to-end at 8.5-9.5s. The
+    /// gate does not. Sharing one number forced a choice between a gate that hangs
+    /// for a minute and a route turn that is killed mid-flight; the route turn lost,
+    /// silently, for weeks.
+    ///
+    /// # This value MUST exceed the binary's own route cap
+    ///
+    /// `anvil-hooks`' `ROUTE_TURN_TIMEOUT_MS` (90000) is the deadline the hook
+    /// process applies to its OWN engine call, and it is the deadline that writes an
+    /// `engine_timeout` delivery-log row on expiry. If the harness's cap (this value)
+    /// is the lower of the two, the harness kills the process first and NO row is
+    /// written — the failure becomes invisible, which is exactly how a total delivery
+    /// outage stayed hidden. Keep this strictly greater than 90000.
+    pub turn_timeout_ms: u64,
     /// The per-turn routing command the user-prompt hook invokes (e.g.
     /// `anvil-hooks route-turn`). Harnesses that support a user-prompt event
     /// install this ALONGSIDE the gate command.
@@ -260,6 +290,7 @@ impl Default for InstallSpec {
         InstallSpec {
             command: DEFAULT_GATE_COMMAND.to_string(),
             timeout_ms: 5000,
+            turn_timeout_ms: DEFAULT_TURN_TIMEOUT_MS,
             turn_command: DEFAULT_TURN_COMMAND.to_string(),
             mcp_command: String::new(),
         }

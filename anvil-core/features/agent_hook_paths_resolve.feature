@@ -16,13 +16,3 @@ Feature: Agent hook paths resolve
   Scenario: Staged kit content is not the source tree
     Given the shipped skills and source playbooks
     Then the staged playbooks are exactly the source playbooks that carry a machine
-
-  # The Claude Code slash-command prompts are NOT kit content — they live in the
-  # repository and brine-private/.claude/commands/forge symlinks this same tree,
-  # so both projects serve them to every agent. They carry the same hook-path
-  # instructions the shipped skills do, and before this track they pointed at a
-  # `workflows/` directory that does not exist. They resolve against the SOURCE
-  # playbooks tree, which is what an agent working in this repo actually reads.
-  Scenario: Slash-command prompts point to live playbook hooks
-    Given the repository's Claude Code slash-command prompts
-    Then each documented slash-command hook path exists below the source playbooks directory

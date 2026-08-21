@@ -5578,7 +5578,7 @@ impl AnvilService for AnvilServer {
         Ok(Response::new(HealthCheckResponse {
             status: "ok".to_string(),
             wire_proto_version: anvil_engine::WIRE_PROTO_VERSION,
-            build_version: env!("CARGO_PKG_VERSION").to_string(),
+            build_version: anvil_engine::ENGINE_VERSION.to_string(),
         }))
     }
 
@@ -8754,12 +8754,12 @@ async fn run(
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
-            let record = foundry_engine_addressing::RendezvousRecord::new(
+            let record = anvil_engine::engine_addressing::RendezvousRecord::new(
                 format!("http://127.0.0.1:{}", port),
-                env!("CARGO_PKG_VERSION").to_string(),
+                anvil_engine::ENGINE_VERSION.to_string(),
                 started_at,
             );
-            if let Err(e) = foundry_engine_addressing::publish(dir, &record) {
+            if let Err(e) = anvil_engine::engine_addressing::publish(dir, &record) {
                 tracing::warn!(error = %e, dir = %dir.display(), "failed to publish Foundry rendezvous record");
             }
         } else {
@@ -8782,7 +8782,7 @@ async fn run(
     // never linger. Best-effort (cleanup itself swallows errors).
     if !rendezvous_disabled {
         if let Some(dir) = rendezvous_dir.as_deref() {
-            foundry_engine_addressing::cleanup(dir);
+            anvil_engine::engine_addressing::cleanup(dir);
         }
     }
 
@@ -8812,11 +8812,12 @@ fn rendezvous_disabled() -> bool {
 /// - Standalone ⇒ `EngineVerifier::Standalone` (verify => Ok(None));
 /// - Foundry + a test stub requested via `ANVIL_TEST_SESSION_VERIFIER`
 ///   (debug builds only) ⇒ the hermetic `EngineVerifier::Stub`;
-/// - Foundry on Unix + `foundry-session` ⇒ the production
-///   `EngineVerifier::Broker` (delegates to the foundry helper, honoring the
-///   forwarded bearer token);
-/// - Foundry without a broker compiled in (feature-off / non-unix) ⇒ falls
-///   back to `Standalone` (nothing to verify against).
+/// - Foundry in a `foundry-session` build ⇒ the production verifier injected
+///   through `EngineVerifier::External` (delegates to the foundry helper,
+///   honoring the forwarded bearer token). That build is `anvil-kit-engine` in
+///   the `kit-build/` workspace, which compiles this file as its own bin;
+/// - Foundry without a verifier injected (the default workspace's own build of
+///   this bin) ⇒ falls back to `Standalone` (nothing to verify against).
 fn detect_mode_and_verifier() -> (EngineMode, EngineVerifier) {
     let token_present = std::env::var("FOUNDRY_SESSION_TOKEN")
         .map(|t| !t.trim().is_empty())
@@ -8848,21 +8849,50 @@ fn detect_mode_and_verifier() -> (EngineMode, EngineVerifier) {
         }
     }
 
-    #[cfg(all(unix, feature = "foundry-session"))]
+    // `foundry-session` is declared by exactly ONE package: `anvil-kit-engine`
+    // in the `kit-build/` workspace, which compiles this very file as its own
+    // `[[bin]]` with `foundry-kit-broker-client` linked. So this arm is live
+    // precisely when the kit builds the engine, and dead when `anvil-engine`
+    // builds its own bin from the default workspace — where the broker client
+    // is not, and must not be, reachable.
+    #[cfg(feature = "foundry-session")]
     {
-        use anvil_engine::session::BrokerSessionVerifier;
-        use std::sync::Arc;
+        // A LIVENESS MARKER THE BUILD GATE CAN SEE FROM OUTSIDE.
+        //
+        // `scripts/assert-kit-verifier-linked.sh` refuses to ship a binary that
+        // does not contain this string. It sits INSIDE the cfg arm on purpose:
+        // the two probes that look easier both fail.
+        //
+        //   - Symbol counts (`nm` for `verify_session`) are Mach-O-only. The
+        //     zigbuild linux ELF is stripped, so the count is 0 on a perfectly
+        //     good build; a gate keyed to that refuses every linux target, gets
+        //     switched off, and becomes a comment again.
+        //   - The dependency graph proves LINKAGE, not LIVENESS.
+        //     `anvil-kit-engine` depends on the broker client non-optionally, so
+        //     `--no-default-features` still links it while THIS arm is dead and
+        //     the engine falls through to `Standalone`. One flag, no verifier,
+        //     graph-based gate green. Measured, not supposed.
+        //
+        // A string literal in rodata is present iff this arm compiled, and
+        // survives in Mach-O, ELF and PE alike. `tracing` reads it at runtime so
+        // no optimiser can argue it is unreachable.
+        const VERIFIER_MARKER: &str = "anvil-verifier-linked:broker-session-v1";
+        tracing::debug!(marker = VERIFIER_MARKER, "Foundry session verifier active");
+
         // anvil's kit id; the broker derives the audience as
         // `foundry-mcp:anvil-kit` (matches EXPECTED_AUDIENCE).
         return (
             EngineMode::Foundry,
-            EngineVerifier::Broker(Arc::new(BrokerSessionVerifier::new("anvil-kit"))),
+            EngineVerifier::External(std::sync::Arc::new(
+                anvil_kit_engine::BrokerSessionVerifier::new("anvil-kit"),
+            )),
         );
     }
 
-    // Foundry token present but no broker verifier compiled in (feature-off /
-    // non-unix). Nothing to verify against, so operate standalone.
-    #[cfg(not(all(unix, feature = "foundry-session")))]
+    // Foundry token present but no verifier injected — this is the default
+    // workspace's own build of the engine binary. Nothing to verify against, so
+    // operate standalone.
+    #[cfg(not(feature = "foundry-session"))]
     {
         (EngineMode::Standalone, EngineVerifier::Standalone)
     }
@@ -10278,8 +10308,8 @@ fn checkin_next_step(
                 format!(
                     "You can create a new artifact. For each of the {} type(s) in `available_types`, \
                      check its `execution_route`: if `engine`, call `describe(<type>)` to learn \
-                     required fields then `begin(artifact_type: <type>, ...)`; if `fallback:forge:<skill>`, \
-                     invoke that forge skill instead. {} parent artifact(s) are available in `filtered_artifacts` \
+                     required fields then `begin(artifact_type: <type>, ...)`; if `none`, that type \
+                     is not creatable in this session. {} parent artifact(s) are available in `filtered_artifacts` \
                      as valid parents for child-track creation.",
                     target_count, parent_count
                 )
@@ -10292,7 +10322,7 @@ fn checkin_next_step(
                 format!(
                     "{} artifact(s) await review. For each entry in `filtered_artifacts`, \
                      check its `execution_route`: if `engine`, call `begin(identifier: <id>)` to record \
-                     the review transition; if `fallback:forge:<skill>`, invoke that forge skill instead.",
+                     the review transition and be served the gate's review context.",
                     filtered.len()
                 )
             }
@@ -10304,7 +10334,7 @@ fn checkin_next_step(
                 format!(
                     "{} artifact(s) can be resumed. For each entry in `filtered_artifacts`, \
                      check its `execution_route`: if `engine`, call `begin(identifier: <id>)`; \
-                     if `fallback:forge:<skill>`, invoke that forge skill instead.",
+                     if `none`, that artifact has no action available to you.",
                     filtered.len()
                 )
             }
@@ -10357,7 +10387,7 @@ fn describe_next_step_for_instance(
         format!(
             "{} action(s) available. For each entry in `available_actions`, check its \
              `execution_route`: if `engine`, call `begin(identifier: <id>)` to execute it; \
-             if `fallback:forge:<skill>`, invoke that forge skill instead.",
+             if `none`, that action is not available to you.",
             actions.len()
         )
     }

@@ -18,6 +18,24 @@ Feature: Per-harness hook adapters synthesize idempotent, reversible config bloc
     And the Claude Code settings PreToolUse hook timeout is 5000
     And the Claude Code adapter reports gate capability "hard"
 
+  Scenario: the route-turn hooks get their OWN timeout, far above the gate's
+    # A route turn makes model calls and was measured end-to-end at 8.5-9.5s. The
+    # gate is a fast local resolution with no model call. They shared one number,
+    # and the shared number was sized for the gate — so every authenticated route
+    # turn was killed by the harness at 5s.
+    #
+    # It was killed SILENTLY, which is the part that matters: the harness cap sat
+    # BELOW anvil-hooks' own ROUTE_TURN_TIMEOUT_MS, so the harness reaped the
+    # process before the binary's deadline could fire and write the engine_timeout
+    # delivery-log row. An invisible failure is worse than a fast one.
+    #
+    # 100000 > 90000 restores the ordering. The gate stays at the caller's value.
+    Given an empty Claude Code settings file
+    When the Claude Code adapter installs with command "anvil-hooks gate-check" and timeout 5000
+    Then the Claude Code settings UserPromptSubmit hook timeout is 100000
+    And the Claude Code settings subagent-route hook timeout is 100000
+    And the Claude Code settings PreToolUse hook timeout is 5000
+
   Scenario: a second Claude Code install is a no-op (idempotent — gate + subagent route)
     Given an empty Claude Code settings file
     When the Claude Code adapter installs with command "anvil-hooks gate-check" and timeout 5000
@@ -109,11 +127,12 @@ Feature: Per-harness hook adapters synthesize idempotent, reversible config bloc
   Scenario: the Codex route hook emits codex 0.144's exact shape with the timeout in SECONDS
     # codex 0.144 reads ~/.codex/hooks.json and expects the hook `timeout` in
     # SECONDS, not milliseconds. Assert the COMPLETE emitted document shape (exact
-    # nesting, type:command, command string, timeout:5) so a unit drift (e.g.
-    # emitting 5000 ms) can't recur.
+    # nesting, type:command, command string, timeouts in seconds) so a unit drift
+    # (e.g. emitting 5000 ms) can't recur. The route entry and the gate entry carry
+    # DIFFERENT timeouts: a route turn makes model calls, a gate does not.
     Given an empty Codex hooks file
     When the Codex adapter installs with command "anvil-hooks gate-check" and timeout 5000
-    Then the Codex hooks.json is exactly the codex route-hook shape with command "anvil-hooks route-turn --source codex" and timeout 5
+    Then the Codex hooks.json is exactly the codex route-hook shape with command "anvil-hooks route-turn --source codex", route timeout 100, and gate timeout 5
 
   Scenario: install absorbs only the canonical route shape, preserving an operator anvil-hooks audit hook
     # Absorption on install matches ONLY the canonical legacy route command
