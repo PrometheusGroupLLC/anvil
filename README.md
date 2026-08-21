@@ -16,77 +16,155 @@ project's development memory (proposals, tracks, decisions, learnings).
 
 > ### Read this first
 >
-> This repository is a **public mirror** of a private development repository,
-> and **it does not currently build for outside contributors** — the workspace
-> depends on private sibling repositories that are not yet published. Both
-> points are explained honestly in [CONTRIBUTING.md](CONTRIBUTING.md), and the
-> build situation is summarised under [Build status](#build-status) below.
+> **This repository builds.** Clone it, install `protoc`, and `cargo test
+> --workspace --locked` goes green — see [Building](#building) for the exact
+> commands and what was measured. An earlier version of this file said the
+> opposite; that was true at the initial release and was fixed on 2026-08-20.
 >
-> You can read the source and the specification today. You cannot compile it
-> today. We would rather tell you that up front.
+> Two things are still worth knowing up front. This repository is a **one-way
+> curated export** of a private development repository — see [Relationship to
+> the private repository](#relationship-to-the-private-repository). And while
+> the 504 `.feature` files that constitute anvil's specification all ship here,
+> **they cannot be executed here**, because the Gherkin runner they bind to is
+> not ours to publish. The specification is readable; that particular suite is
+> not runnable. Details under [The specification is the `.feature`
+> files](#the-specification-is-the-feature-files).
 
 ## What is in this repository
 
+The Rust workspace has exactly four members:
+
 | Crate | What it is |
 | --- | --- |
-| `anvil-core` | Library: ports, domain types, playbook loader, hearth reader |
-| `anvil-core-hearth` | Hearth storage adapters and maintenance binaries |
-| `anvil-engine` | The long-running engine process, exposing a gRPC API |
+| `anvil-core` | Library: the domain and the ports. Playbook loader and registries, and the lifecycle domain — begin, complete, snapshot, amend, route, checkin, catalog, describe, the transition log |
+| `anvil-core-hearth` | The filesystem adapters that implement those ports against a hearth, plus three maintenance binaries (`anvil-hearth-probe`, `anvil-status-header-reconcile`, `anvil-change-record-import`) |
+| `anvil-engine` | The long-running engine process, exposing a gRPC API. Also builds `anvil-hooks`, the per-harness hook installer and runtime gate |
 | `anvil-mcp` | An MCP shim (JSON-RPC over stdio) that fronts the engine for agents |
-| `anvil-test-support` | Shared test harness and fixtures |
-| `anvil-core-steps`, `anvil-engine-steps`, `anvil-mcp-steps` | Gherkin step definitions binding the `.feature` files to real execution |
 
-`proto/anvil.proto` defines the gRPC service.
+Alongside them:
+
+- `proto/anvil.proto` — the gRPC service definition.
+- `playbooks/` — the state machines the engine actually runs. Not documentation;
+  the engine loads these, and the integrity tests read them.
+- `docs/authoring-playbooks.md`, `docs/vocabulary.md` — how to write a playbook,
+  and what the terms mean.
+- `PHILOSOPHY.md`, `AGENTS.md`, `CLAUDE.md` — the design doctrine and the
+  development process the project holds itself to.
+
+## Building
+
+You need a Rust toolchain and **`protoc`**. `anvil-engine/build.rs` compiles
+`proto/anvil.proto` through `tonic-build`, which shells out to `protoc`. Without
+it the build fails inside a build script — "Could not find protoc" — and cargo
+exits 101. On macOS, `brew install protobuf`; on Debian/Ubuntu, `apt install
+protobuf-compiler`.
+
+Then:
+
+```sh
+git clone https://github.com/PrometheusGroupLLC/anvil.git
+cd anvil
+cargo test --workspace --locked
+```
+
+### What was actually measured
+
+Run on the exported tree extracted somewhere neither its parent nor its
+grandparent contains any private sibling, with a throwaway `CARGO_HOME` and no
+`.cargo/config.toml` in any ancestor — so nothing off the build machine could be
+silently supplied:
+
+```
+cargo metadata --no-deps --locked                exit=0
+cargo check --workspace --all-targets --locked   exit=0
+cargo test --workspace --locked                  exit=0
+```
+
+`cargo test` ran 18 test binaries: **104 tests, 0 failures, 0 ignored**. The
+same three commands were also run against a fresh unauthenticated clone of this
+repository with an empty `CARGO_HOME`, forcing a cold download of every
+dependency from crates.io — same result.
+
+Be precise about what those 104 tests are. They are the workspace's Rust unit
+tests, doc-tests, and its structural guards — the checks that no crate reaches
+outside the repository, that the shipped playbooks parse, that parallel copies
+have not drifted. They are **not** the 504 `.feature` scenarios, which do not
+run here. "The workspace builds and its 104 Rust tests pass from a bare clone"
+is the claim; "the test suite passes" would be a larger one than the evidence
+supports.
+
+Verified with `cargo 1.97.1` / `rustc 1.97.1` and `libprotoc 29.3` on macOS
+arm64. Other platforms and toolchains are not claimed — they are untested here,
+not known-broken. The build is not warning-free; three dead-code warnings in
+`anvil-engine` are known.
 
 ## The specification is the `.feature` files
 
 This is the most useful thing to read here, and it needs no toolchain.
 
 Anvil's central claim is that **nothing with behaviour is built without a
-`.feature` file binding intent to execution**. There are no raw unit tests for
-behavioural coverage — every behavioural guarantee is a Gherkin scenario, and
-each crate's `features/` directory tests that crate from the perspective of its
-own consumer:
+`.feature` file binding intent to execution**. Behavioural guarantees are
+Gherkin scenarios rather than hand-written unit tests, and each crate's
+`features/` directory tests that crate from the perspective of its own consumer:
 
-- `anvil-mcp/features/` — written from the perspective of the coding agent.
-- `anvil-engine/features/` — written from the perspective of the MCP shim.
-- `anvil-core/features/` — written from the perspective of the engine.
+| Directory | Written from the perspective of | Scenarios |
+| --- | --- | --- |
+| `anvil-mcp/features/` | the coding agent | 78 files |
+| `anvil-engine/features/` | the MCP shim | 166 files |
+| `anvil-core/features/` | the engine | 260 files |
 
 If you want to know what anvil actually promises, read those files rather than
 this README. Reviewing them for gaps or wrong behaviour is a genuinely useful
 contribution and requires nothing installed.
 
-## Build status
+**They do not execute in this repository.** The step definitions that bind them
+to running code, and the `.brine` manifests that drive them, live in crates that
+depend on Brine, a Gherkin runner that is a third party's work and not ours to
+publish. Those crates are therefore not exported,
+so `cargo test` here does not touch the `.feature` files at all. When the runner
+is published, the suites ship with the repository. Until then, treat this
+directory as specification you can read and argue with, not as a suite you can
+run. The Rust tests described under [Building](#building) are a different and
+much smaller thing.
 
-**Honest summary: outside contributors cannot build this repository yet.**
+## Relationship to the private repository
 
-The workspace declares non-optional path dependencies on private sibling
-repositories that have not been published — most importantly the Gherkin runner
-that executes the `.feature` suite. Because the crate holding those
-dependencies is a workspace member, Cargo fails at *manifest resolution*, before
-compiling anything. `cargo build`, `cargo check`, and `cargo metadata` all fail
-identically.
+This repository is a **one-way curated export** of a private development
+repository. It is produced by an export script working from an explicit
+include-list: anything not named is excluded by construction. Development memory,
+internal contracts, agent prompts, vendored assets and local configuration do
+not cross over, and the export is gated on a tree-wide sweep plus an isolated
+build before anything is published.
 
-This is a known defect of the public release, not a problem with your
-environment. [CONTRIBUTING.md](CONTRIBUTING.md#2-the-hard-part-you-probably-cannot-build-this-yet)
-sets out the exact failure, the three fixes planned to remove it, and what is
-worth doing in the meantime.
+Two consequences worth stating plainly:
 
-There is deliberately **no CI in this repository** — no GitHub Actions
-workflows at all. That is a security decision: with no workflows, a pull request
-from a fork has nothing to execute. It also means no automated checks will run
-on your PR.
+- **There is no CI here.** No `.github/` directory and no workflow of any kind —
+  the export refuses to run if one appears. So no automated checks run on your
+  pull request; everything, the DCO sign-off included, is checked by hand at
+  review time.
+- **History is export history.** Commits arrive in curated batches rather than
+  as the private repository's own commit stream.
 
 ## MCP tools
 
-Once running, the engine exposes these tools to an agent through the MCP shim:
+Once running, the engine exposes 23 tools to an agent through the MCP shim.
+The lifecycle surface is:
 
+- `anvil_orchestrate` — the general surface-to-anvil handoff; usually the entry
+  point
 - `catalog` — active artifacts and the artifact types available in the hearth
+- `checkin` — orient in the current work and get the next lifecycle step
 - `describe` — available actions and lifecycle context for the current state
-- `begin` — start a new artifact, such as a track
-- `checkin` — record progress on in-flight work
-- `snapshot` — capture the non-deterministic remainder of a piece of work
-- `complete` — close out an artifact through its review gate
+- `begin` — start a new artifact, such as a track, or re-enter an existing one
+- `snapshot` — drive a state transition
+- `complete` — close out the current pass through its review gate
+- `amend` — record a structured amendment against a frozen document
+- `persist_playbook`, `candidate_playbook_intake` — register playbooks
+- `begin_adoption_status` — adoption reporting
+
+The remaining twelve are the `backlog_*` family (shaping, ranking, reshuffle
+proposal and commit, execution binding, outcome sign-off, queue and cross-organ
+views).
 
 ## Contributing
 
@@ -96,7 +174,13 @@ upstream preserving your authorship, and it will reappear here in the next
 export. All commits must carry a `Signed-off-by` line under the
 [Developer Certificate of Origin](dco.txt).
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request —
+with one warning. Its section 2, "The hard part: you probably cannot build this
+yet", is **out of date**: it describes a manifest-resolution failure that no
+longer occurs, names crates that are no longer in the tree, and links a
+`vendor/` directory that does not exist. [Building](#building) above supersedes
+it. The rest of that document — the contribution workflow, the DCO, the review
+cadence — is current.
 
 For security vulnerabilities, do not open a public issue — see
 [SECURITY.md](SECURITY.md).
