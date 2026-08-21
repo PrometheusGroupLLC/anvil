@@ -174,13 +174,7 @@ upstream preserving your authorship, and it will reappear here in the next
 export. All commits must carry a `Signed-off-by` line under the
 [Developer Certificate of Origin](dco.txt).
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request —
-with one warning. Its section 2, "The hard part: you probably cannot build this
-yet", is **out of date**: it describes a manifest-resolution failure that no
-longer occurs, names crates that are no longer in the tree, and links a
-`vendor/` directory that does not exist. [Building](#building) above supersedes
-it. The rest of that document — the contribution workflow, the DCO, the review
-cadence — is current.
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 
 For security vulnerabilities, do not open a public issue — see
 [SECURITY.md](SECURITY.md).

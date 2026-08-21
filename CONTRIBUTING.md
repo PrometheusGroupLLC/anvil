@@ -2,8 +2,8 @@
 
 Thank you for looking at this. Before you spend time on a patch, please read
 the two sections below — they describe how this repository actually works and
-what currently does not work. Both are unusual enough that finding out after
-you have cloned would waste your time.
+what it can and cannot do. Both are unusual enough that finding out after you
+have cloned would waste your time.
 
 ---
 
@@ -38,11 +38,33 @@ What that means in practice:
    so that **your authorship is preserved** on the commit that actually ships.
    Your name, not the maintainer's, is the commit author.
 4. Your pull request is **closed, not merged**, with a comment referencing the
-   upstream change. When the next export happens, your commit appears in this
-   repository's history authored by you.
+   upstream change and linking the commit that landed it.
 
 A closed pull request here is not a rejection. If it was rejected, we will say
 so plainly in the review.
+
+#### What attribution you actually get today — and what you do not
+
+This document previously promised that "your commit appears in this
+repository's history authored by you." **That is not true, and we would rather
+say so than let you find out.** Every export lands as a single batch commit
+whose author and committer are both pinned to the publisher, so an individual
+contributor's authorship does not survive the export boundary. Concretely, if
+your change ships today you get:
+
+- your change, in the code, in the next export;
+- a maintainer's comment linking the landing commit;
+- the "proposed a pull request" event on your profile, which you get for
+  opening the pull request regardless of outcome.
+
+You do **not** get a Merged badge on your pull request, an entry in this
+repository's contributor graph, or `git blame` credit.
+
+We consider that a defect rather than a policy, and intend to fix it — git
+carries author and committer as two separate fields, and the export currently
+pins both when it only needs to pin the committer. Until that ships, treat the
+list above as the whole of what is on offer, and weigh a large patch
+accordingly.
 
 ### Cadence — what to actually expect
 
@@ -60,79 +82,125 @@ change before writing it, rather than investing in a large patch.
 
 ### Why there is no CI
 
-This repository deliberately contains **no GitHub Actions workflows**. That is
-a structural security decision, not an oversight: with no workflows present, a
-pull request from a fork has nothing to execute. Please do not add workflow
-files in a pull request — they will be removed.
+**GitHub Actions is disabled on this repository**, at the repository level. No
+workflow can run here — not ours, and not one that arrives in a pull request.
 
-The consequence is that **no automated checks will run on your PR**. Review is
-done by a human, and validation is done upstream.
+This document used to justify that differently, and the justification was
+wrong. It said that because the repository ships no workflow files, a fork's
+pull request has "nothing to execute." That inference does not hold. Under the
+`pull_request` trigger GitHub builds a merge ref from the base branch and the
+pull request's head, and it executes the workflow definition found *there* — so
+a pull request that adds `.github/workflows/…` supplies the workflow itself.
+Shipping zero workflow files never prevented execution. It is the disabled
+setting that does, and the setting is checkable where the absence of a file was
+only reassuring.
+
+We still ship no workflow files, and a pull request that adds one will have it
+removed — but that is housekeeping now, not the protection.
+
+The consequence for you is unchanged and worth stating plainly: **no automated
+check will ever run on your pull request here.** Nothing on GitHub can produce
+a green tick on this repository. Review is done by a human, and validation is
+done upstream, against the private repository where the full suite runs.
 
 ---
 
-## 2. The hard part: you probably cannot build this yet
+## 2. Building, and the one suite you cannot run
 
-**Please read this before cloning.** As of this export, an outside contributor
-**cannot build this repository and cannot run the test suite.** This is not a
-misconfiguration on your machine.
+**This repository builds from a bare clone.** Clone it, install `protoc`, and
+`cargo test --workspace --locked` goes green. Nothing else — no private
+sibling repository, no credential, no vendored blob — is required.
 
-The workspace declares path dependencies on **private sibling repositories that
-are not published**:
+> **This section used to say the opposite.** Until 2026-08-20 it stated that an
+> outside contributor could not build the repository at all, because the
+> workspace pulled path dependencies from private siblings and Cargo failed
+> during manifest resolution. That was true at the initial public release and
+> is no longer true: the test-runner crates were moved out of the default
+> workspace, and the private broker dependency was removed. The description
+> below was re-measured against the current tree rather than edited in place.
 
-- `anvil-test-support` — a workspace member — depends on `brine-core` and
-  `brine-runner-rust` at `../../brine/…`. **Brine is the Gherkin test runner
-  that executes every `.feature` file in this repository, and it is not
-  currently public.**
-- `anvil-engine` has an optional dependency on `foundry-kit-broker-client` at
-  `../../foundry/…`.
+### Prerequisites
 
-Two other support crates that used to be pulled from a private repository —
-`foundry-engine-addressing` and `foundry-kit-telemetry` — are now vendored in
-source form under [`vendor/`](vendor/) and need nothing external.
+Two, and the second one is easy to miss:
 
-Because `anvil-test-support` is a workspace member and its `brine` dependencies
-are **not optional**, Cargo fails during manifest resolution — before any
-compilation happens. `cargo build`, `cargo check`, and even
-`cargo metadata` all fail with:
+1. **A Rust toolchain.** Anything current; the measurement below used
+   1.97.1.
+2. **`protoc`, the Protocol Buffers compiler.** This is a **hard**
+   prerequisite, not an optional extra. `anvil-engine/build.rs` compiles
+   `proto/anvil.proto` through `tonic-build`, which shells out to `protoc`.
+   Without it the build dies inside a build script and cargo exits 101:
 
+   ```
+   error: failed to run custom build command for `anvil-engine`
+     Could not find `protoc`. If `protoc` is installed, try setting the
+     `PROTOC` environment variable to the path of the `protoc` binary.
+   ```
+
+   Install it with `brew install protobuf` on macOS, or
+   `apt install protobuf-compiler` on Debian/Ubuntu.
+
+### Build and test
+
+```bash
+git clone https://github.com/PrometheusGroupLLC/anvil.git
+cd anvil
+cargo test --workspace --locked
 ```
-error: failed to load manifest for workspace member `…/anvil-core`
-Caused by: failed to load manifest for dependency `anvil-test-support`
-Caused by: failed to load manifest for dependency `brine-core`
-Caused by: failed to read `…/brine/core/Cargo.toml`
-Caused by: No such file or directory (os error 2)
-```
 
-So this is worse than "the tests do not run" — **nothing builds at all.**
+### What was actually measured
 
-### What is being done about it
+Against commit `4d7890e2` of this repository, on a clone in a directory with no
+private sibling repositories anywhere above it:
 
-This is a known, tracked defect in the public release, and it is the single
-biggest barrier to outside contribution. The intended fixes, in rough order:
+- `cargo metadata --no-deps` — exits 0. The workspace enumerates.
+- `cargo test --workspace --locked` — **exits 0**, 104 tests passed across 18
+  test binaries, 0 failed.
+- With `protoc` removed from `PATH` and nothing else changed,
+  `cargo check -p anvil-engine` — **exits 101** with the error quoted above.
+  That is the whole reason `protoc` is called out as a prerequisite.
 
-1. **Decouple the library crates from the test runner** so that
-   `cargo build -p anvil-core`, `-p anvil-engine`, and `-p anvil-mcp` succeed
-   with no sibling repositories present. The `brine` dependencies belong behind
-   an optional feature or in a separate workspace, not in the default graph.
-2. **Make the `foundry` broker dependency genuinely optional**, so it is absent
-   from the default resolution graph.
-3. **Publish or vendor the test runner** so that the `.feature` suite — which is
-   the project's central correctness claim — can be executed by anyone.
+### The workspace
 
-No date is committed to any of these. Until at least item 1 lands, treat this
-repository as **readable but not buildable**.
+Exactly four members:
+
+| Crate | What it is |
+| --- | --- |
+| `anvil-core` | Library: ports, domain types, playbook loader, hearth reader |
+| `anvil-core-hearth` | Hearth storage adapters and maintenance binaries |
+| `anvil-engine` | The long-running engine process, exposing a gRPC API |
+| `anvil-mcp` | An MCP shim (JSON-RPC over stdio) that fronts the engine for agents |
+
+`proto/anvil.proto` defines the gRPC service.
+
+### What you cannot run: the `.feature` suite
+
+This is the real limitation, and it is narrower than "nothing builds".
+
+The 504 `.feature` files in this repository are anvil's specification — 260
+under `anvil-core/features/`, 166 under `anvil-engine/features/`, 78 under
+`anvil-mcp/features/`. **They all ship here. None of them execute here.**
+
+`cargo test --workspace` does not run them. The Gherkin runner they bind to
+(Brine) is not public, and the step-definition crates that bind each scenario to
+real execution are not part of this export. So the 104 tests reported above are
+the Rust unit and integration tests — they are not the behavioural suite, and
+you should not read a green `cargo test` as "the specification passes."
+
+Publishing the runner, so that the suite the project's correctness claim rests
+on can be executed by anyone, is still an open intention. No date is committed
+to it.
 
 ### What you can usefully do in the meantime
 
 - **Read the `.feature` files.** They are the specification. Every behavioural
   claim anvil makes is written as a Gherkin scenario under each crate's
   `features/` directory. Reviewing them for gaps, ambiguity, or wrong behaviour
-  is genuinely valuable and requires no build.
+  is genuinely valuable.
 - **Report bugs and design problems** as issues.
 - **Documentation and prose fixes** need no toolchain.
-- **Small, self-evidently-correct source changes** can be reviewed by eye and
-  validated upstream. Say in the PR that you were unable to build; we will not
-  hold it against you.
+- **Source changes** can be built and unit-tested with the commands above; say
+  in the PR that you could not run the `.feature` suite, which nobody outside
+  the project can. We will not hold it against you.
 
 Please do not open a pull request whose description claims tests pass unless
 you actually ran them.
@@ -212,6 +280,11 @@ that crate from the perspective of *its* consumer:
 If your change alters behaviour, it should add or modify a scenario, and the
 scenario should be written from the user's perspective at that seam — no
 implementation details, no internal type names.
+
+You will not be able to execute the scenario you write — see [what you cannot
+run](#what-you-cannot-run-the-feature-suite). Write it anyway; a reviewer runs
+it upstream. A behavioural change that arrives without a scenario is incomplete
+even though no check here will say so.
 
 ### Style
 
